@@ -1,0 +1,10 @@
+fastapi
+pytest
+requests
+python-dotenv
+supabase
+loguru
+pydantic[email]
+uvicorn
+tencentcloud-sdk-python-common
+tencentcloud-sdk-python-dnspod 
