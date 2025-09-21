@@ -375,7 +375,10 @@ services:
       LOGFLARE_SINGLE_TENANT: true
       LOGFLARE_SUPABASE_MODE: true
       LOGFLARE_MIN_CLUSTER_SIZE: 1
-
+      #自定义配置
+      LOGFLARE_MAX_BUFFER_SIZE: 50000          # 50 k 条就刷盘
+      LOGFLARE_BUFFER_DISK_OVERFLOW: true      # 超了写磁盘
+      LOGFLARE_SINGLE_NODE: true               # 去掉集群复制缓存
       # Comment variables to use Big Query backend for analytics
       POSTGRES_BACKEND_URL: postgresql://supabase_admin:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/_supabase
       POSTGRES_BACKEND_SCHEMA: _analytics
@@ -383,6 +386,12 @@ services:
       # Uncomment to use Big Query backend for analytics
       # GOOGLE_PROJECT_ID: ${GOOGLE_PROJECT_ID}
       # GOOGLE_PROJECT_NUMBER: ${GOOGLE_PROJECT_NUMBER}
+    deploy:                 # 只有 Swarm 模式或 docker compose v3 才会生效
+      resources:
+        limits:             # 硬上限（红线）
+          memory: 2048M      # 容器内存占用一旦 ≥ 512 MB，立即被 OOMKill 并重启
+        reservations:       # 软下限（调度器用）
+          memory: 128M      # 节点必须预留 128 MB 才能启动这个容器，否则调度失败
 
   # Comment out everything below this point if you are using an external Postgres database
   db:
