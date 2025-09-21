@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from urllib.parse import urlparse
 import requests
 import json
+from center_management.db.spdb_init import spdbConfig
 
 # 加载环境变量
 load_dotenv()
@@ -108,6 +109,13 @@ def clear_auth_cookies(response: Response) -> None:
 
 # 创建 Supabase 客户端
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+
+# 初始化 Supabase 数据库操作（使用 service role key）
+try:
+    spdb = spdbConfig()
+except Exception as e:
+    logger.error(f"初始化 spdbConfig 失败: {e}")
+    spdb = None
 
 # 允许前端 (Next.js) 跨域携带 cookie
 app.add_middleware(
@@ -296,6 +304,31 @@ async def me(token: str | None = None, access_token: str | None = Cookie(default
 async def logout(response: Response):
     clear_auth_cookies(response)
     return {"ok": True}
+
+# 基于当前登录用户，返回已购买的产品/套餐列表
+@app.get("/user/products")
+async def get_user_products(token: str | None = None, access_token: str | None = Cookie(default=None)):
+    token_to_use = token or access_token
+    if not token_to_use:
+        raise HTTPException(401, detail="未登录")
+    if spdb is None:
+        raise HTTPException(500, detail="数据库未初始化")
+    try:
+        user = supabase.auth.get_user(token_to_use).user
+        if not user or not getattr(user, "email", None):
+            raise HTTPException(401, detail="未登录或用户无邮箱信息")
+        email = user.email
+        logger.info(f"查询用户产品: {email}")
+        data = spdb.fetch_data_user(user_email=email)
+        # 统一输出为列表
+        if data is None:
+            data = []
+        return data
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取用户产品失败: {e}")
+        raise HTTPException(500, detail="查询失败")
 
 # 健康检查端点
 @app.get("/health")

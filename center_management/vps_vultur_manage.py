@@ -45,7 +45,8 @@ def create_new_instance(region=region, plan=plan, label=label, os_id=os_id):
     # plan对应地址，vc2-1c-1gb代表1核1G内存
     # label代表实例名称
     # os_id代表操作系统ID，可以通过https://api.vultr.com/v2/os获取
-
+    # sshkey_id代表SSH Key的ID，可以通过https://api.vultr.com/v2/sshkeys获取
+    #云端sshkey_id与本地测试不同
     json_data = {
         'region': region,
         'plan': plan,
@@ -54,7 +55,7 @@ def create_new_instance(region=region, plan=plan, label=label, os_id=os_id):
         'user_data': 'QmFzZTY0IEV4YW1wbGUgRGF0YQ==',
         'backups': 'disabled',
         'script_id':'e154aeac-0221-45ef-98a3-59ec10c04c3f',
-        'sshkey_id':['d0907ba7-2c7c-41cd-b7ab-60192b3d8c14'],
+        'sshkey_id':['3f25451c-9da9-4c09-aabc-21ecd54dd647'],
     }
 
     response = requests.post('https://api.vultr.com/v2/instances', headers=headers, json=json_data)
@@ -269,6 +270,7 @@ def execute_remote_command(hostname, port, username, key_file, command, timeout=
                 logger.info("Closing SSH connection")
                 ssh.close()
             except Exception:
+                logger.warning("ssh close failed")
                 pass
 
 
