@@ -1,15 +1,18 @@
 import node_manage as nmanage
+from loguru import logger
 
-hostname='149.28.92.68'
+hostname='45.32.252.10'
 print(f"默认测试服务器地址: {hostname}")
+logger.info("本测试默认使用/root/.ssh/id_ed25519私钥文件，请确保该文件存在可用，且为云端私钥")
 def test_add_user(hostname=hostname):
     """添加用户测试"""
     print("=== 添加用户测试 ===")
+    
     exit_status, hy2_link, out, err = nmanage.run_remote_self_sb_change(
         hostname=hostname,
         port=22,
         username='root',
-        key_file='id_ed25519',
+        key_file='/root/.ssh/id_ed25519',
         port_arg=9993,
         name_arg='supo@go.com',
         up_mbps=50,

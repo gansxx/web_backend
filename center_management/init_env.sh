@@ -35,12 +35,13 @@ if [ -d "$TARGET_DIR" ]; then
 	git pull || err_exit "git pull failed in existing repo"
 else
     # 主分支下载
-	# info "Cloning repository $REPO_SSH_URL -> $TARGET_DIR"
-	# git clone "$REPO_SSH_URL" "$TARGET_DIR" || err_exit "git clone failed"
+	echo "下载主分支"
+	info "Cloning repository $REPO_SSH_URL (main branch) -> $TARGET_DIR"
+	git clone "$REPO_SSH_URL" "$TARGET_DIR" || err_exit "git clone failed"
 	#测试分支下载
-	echo "下载测试分支"
-	info "Cloning repository $REPO_SSH_URL (test/test_alarm branch) -> $TARGET_DIR"
-	git clone -b test/test_alarm --single-branch https://gansxx:8j8U_0Jz92LsthdG17GxYW86MQp1OjQ1NXEK.01.100h7pp8l@jihulab.com/gansxx/sing-box-v2ray.git
+	# echo "下载测试分支"
+	# info "Cloning repository $REPO_SSH_URL (test/test_alarm branch) -> $TARGET_DIR"
+	# git clone -b test/test_alarm --single-branch https://gansxx:8j8U_0Jz92LsthdG17GxYW86MQp1OjQ1NXEK.01.100h7pp8l@jihulab.com/gansxx/sing-box-v2ray.git
 fi
 
 # 3) 确认目录和脚本存在并可执行

@@ -165,22 +165,108 @@ def execute_remote_command(hostname, port, username, key_file, command, timeout=
     Paramiko key types and fall back to passing key_filename to connect().
     """
     ssh = None
+    start_ts = time.time()
+    # 打印将要执行的命令（做长度截断，避免日志过长）
+    _cmd_preview = command if isinstance(command, str) else str(command)
+    if len(_cmd_preview) > 200:
+        _cmd_preview = _cmd_preview[:200] + ' …(truncated)'
+    logger.info(f"[SSH] Exec on {username}@{hostname}:{port} -> {shlex.quote(_cmd_preview)}")
     try:
         ssh = ssh_connect(hostname, port, username, key_file, timeout=30)
-        stdin, stdout, stderr = ssh.exec_command(command, timeout=timeout)
-        out = stdout.read().decode('utf-8', errors='ignore')
-        err = stderr.read().decode('utf-8', errors='ignore')
+        transport = ssh.get_transport()
+        if not transport:
+            raise RuntimeError("SSH transport not available")
+        chan = transport.open_session()
+        # 显式经由 bash 执行，保证与交互式一致
+        chan.exec_command(f"/bin/bash -lc {shlex.quote(command)}")
+        chan.settimeout(1.0)
+
+        stdout_buf = []
+        stderr_buf = []
+
+        while True:
+            # 超时控制
+            if timeout and (time.time() - start_ts) > timeout:
+                try:
+                    chan.close()
+                except Exception:
+                    pass
+                raise TimeoutError(f"Remote command timed out after {timeout}s")
+
+            # 实时读取 STDOUT
+            try:
+                if chan.recv_ready():
+                    data = chan.recv(4096)
+                    if data:
+                        text = data.decode('utf-8', errors='ignore')
+                        stdout_buf.append(text)
+                        for line in text.splitlines():
+                            logger.info(f"[SSH][STDOUT] {line}")
+            except Exception:
+                pass
+
+            # 实时读取 STDERR
+            try:
+                if chan.recv_stderr_ready():
+                    data_e = chan.recv_stderr(4096)
+                    if data_e:
+                        text_e = data_e.decode('utf-8', errors='ignore')
+                        stderr_buf.append(text_e)
+                        for line in text_e.splitlines():
+                            logger.error(f"[SSH][STDERR] {line}")
+            except Exception:
+                pass
+
+            if chan.exit_status_ready():
+                break
+
+            time.sleep(0.05)
+
+        # 排空剩余数据
+        drain_deadline = time.time() + 1.0
+        while time.time() < drain_deadline:
+            drained = False
+            if chan.recv_ready():
+                data = chan.recv(4096)
+                if data:
+                    text = data.decode('utf-8', errors='ignore')
+                    stdout_buf.append(text)
+                    for line in text.splitlines():
+                        logger.info(f"[SSH][STDOUT] {line}")
+                    drained = True
+            if chan.recv_stderr_ready():
+                data_e = chan.recv_stderr(4096)
+                if data_e:
+                    text_e = data_e.decode('utf-8', errors='ignore')
+                    stderr_buf.append(text_e)
+                    for line in text_e.splitlines():
+                        logger.error(f"[SSH][STDERR] {line}")
+                    drained = True
+            if not drained:
+                break
+
         try:
-            exit_status = stdout.channel.recv_exit_status()
+            exit_status = chan.recv_exit_status()
         except Exception:
             exit_status = 0
+
+        out = ''.join(stdout_buf)
+        err = ''.join(stderr_buf)
+
+        duration = time.time() - start_ts
+        if exit_status == 0:
+            logger.info(f"[SSH] Done rc=0 in {duration:.1f}s on {hostname}")
+        else:
+            logger.error(f"[SSH] Failed rc={exit_status} in {duration:.1f}s on {hostname}")
         return exit_status, out, err
     except Exception as e:
-        logger.error(f"SSH attempt failed on {hostname}:{port}: {e}")
+        duration = time.time() - start_ts
+        logger.error(f"[SSH] Exception on {hostname}:{port} after {duration:.1f}s: {e}")
         return 255, '', str(e)
     finally:
         if ssh:
             try:
+                logger.info("Closing SSH connection")
                 ssh.close()
             except Exception:
                 pass
