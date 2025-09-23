@@ -156,11 +156,14 @@ def fetch_and_save_tables_csv(hostname, username, key_file, table_names, out_dir
 
 	Returns list of written file paths.
 	"""
+	# 当未指定 out_dir 时，默认保存至 ./csv/<hostname>/ 目录下
+	safe_host = str(hostname).replace(':', '_')
 	if out_dir is None:
-		out_dir = Path('.').resolve()
+		out_dir = (Path('.') / 'csv' / safe_host).resolve()
 	else:
 		out_dir = Path(out_dir).resolve()
-		out_dir.mkdir(parents=True, exist_ok=True)
+	# 确保目录存在
+	out_dir.mkdir(parents=True, exist_ok=True)
 
 	data = fetch_and_read_db(hostname, username, key_file, table_names=table_names, **kwargs)
 	written = []

@@ -2,4 +2,8 @@ volumes/db/data
 volumes/storage
 .env
 test.http
+node_modules/
+.vscode/
+.pytest_cache/
+__pycache__/
 docker-compose.override.yml

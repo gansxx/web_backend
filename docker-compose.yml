@@ -389,7 +389,7 @@ services:
     deploy:                 # 只有 Swarm 模式或 docker compose v3 才会生效
       resources:
         limits:             # 硬上限（红线）
-          memory: 2048M      # 容器内存占用一旦 ≥ 512 MB，立即被 OOMKill 并重启
+          memory: 1048M      # 容器内存占用一旦 ≥ 512 MB，立即被 OOMKill 并重启
         reservations:       # 软下限（调度器用）
           memory: 128M      # 节点必须预留 128 MB 才能启动这个容器，否则调度失败
 

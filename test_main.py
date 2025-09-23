@@ -107,6 +107,38 @@ def clear_auth_cookies(response: Response) -> None:
     response.delete_cookie("access_token", path="/", domain=COOKIE_DOMAIN, samesite=COOKIE_SAMESITE)
     response.delete_cookie("refresh_token", path="/", domain=COOKIE_DOMAIN, samesite=COOKIE_SAMESITE)
 
+# 使用 refresh_token 刷新会话并回写 Cookie
+def refresh_session_and_set_cookies(response: Response, refresh_token: str) -> str | None:
+    """尝试使用 Supabase 刷新令牌接口刷新 access_token，并写入新 Cookie。
+    返回新的 access_token；若失败返回 None。
+    """
+    try:
+        url = f"{SUPABASE_URL.rstrip('/')}/auth/v1/token?grant_type=refresh_token"
+        headers = {
+            "apikey": SUPABASE_ANON_KEY,
+            "authorization": f"Bearer {SUPABASE_ANON_KEY}",
+            "content-type": "application/json",
+        }
+        payload = {"refresh_token": refresh_token}
+        r = requests.post(url, headers=headers, json=payload, timeout=6)
+        if r.status_code != 200:
+            logger.warning(f"刷新令牌失败: {r.status_code} {r.text}")
+            return None
+        data = r.json() if r.content else {}
+        access_token = data.get("access_token")
+        new_refresh = data.get("refresh_token") or refresh_token
+        expires_in = data.get("expires_in") or 3600
+        if not access_token:
+            logger.warning("刷新接口未返回 access_token")
+            return None
+        # 回写 Cookie
+        set_auth_cookies(response, access_token, new_refresh, int(expires_in))
+        logger.info("access_token 已通过 refresh_token 刷新并回写 Cookie")
+        return access_token
+    except Exception as e:
+        logger.error(f"刷新会话异常: {e}")
+        return None
+
 # 创建 Supabase 客户端
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
@@ -117,6 +149,16 @@ except Exception as e:
     logger.error(f"初始化 spdbConfig 失败: {e}")
     spdb = None
 
+# 将共享对象挂载到 app.state，供子路由访问
+app.state.supabase = supabase
+app.state.spdb = spdb
+app.state.refresh_session_and_set_cookies = refresh_session_and_set_cookies
+app.state.set_auth_cookies = set_auth_cookies
+app.state.clear_auth_cookies = clear_auth_cookies
+app.state.verify_turnstile = verify_turnstile
+app.state.FRONTEND_URL = FRONTEND_URL
+app.state.SUPABASE_URL = SUPABASE_URL
+
 # 允许前端 (Next.js) 跨域携带 cookie
 app.add_middleware(
     CORSMiddleware,
@@ -125,6 +167,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 注册拆分的用户数据路由
+try:
+    from routes.user_data import router as user_data_router
+    app.include_router(user_data_router)
+    logger.info("routes.user_data 已注册")
+except Exception as _e:
+    logger.error(f"注册 routes.user_data 失败: {_e}")
+
+# 注册 auth 路由
+try:
+    from routes.auth import router as auth_router
+    app.include_router(auth_router)
+    logger.info("routes.auth 已注册")
+except Exception as _e:
+    logger.error(f"注册 routes.auth 失败: {_e}")
 
 class AuthRequest(BaseModel):
     email: EmailStr
@@ -142,195 +200,272 @@ class ResetPasswordRequest(BaseModel):
     code: str  # 验证码
     new_password: str  # 新密码
 
-@app.post("/signup")
-async def signup(req: AuthRequest):
-    try:
-        res = supabase.auth.sign_up({"email": req.email, "password": req.password})
-    except Exception as e:
-        # 统一错误返回结构
-        return JSONResponse(status_code=400, content={"error": "注册失败", "detail": str(e)})
-    return {"msg": "注册成功", "user": res.user.dict()}
-
-# 密码找回 - 发送重置密码邮件
-@app.post("/recall")
-async def recall(req: EmailRequest, request: Request):
-    ok, reason = await verify_turnstile(request)
-    if not ok:
-        return JSONResponse(status_code=400, content={"error": "人机验证失败", "detail": reason})
-    try:
-        # 验证邮箱是否存在用户
-        res = supabase.auth.sign_in_with_otp({
-            "email": req.email, 
-            "should_create_user": False,
-            "options": {
-                "email_redirect_to": f"{FRONTEND_URL}/recall"
-            }
-        })
-        logger.info(f"密码重置邮件已发送到: {req.email}")
-        return {"msg": "密码重置邮件已发送，请检查您的邮箱", "email": req.email}
-    except Exception as e:
-        logger.error(f"发送密码重置邮件失败: {str(e)}")
-        # 为了安全，不暴露具体错误信息
-        return {"msg": "如果该邮箱已注册，密码重置邮件将发送到您的邮箱"}
-
-
-# 重置密码
-@app.post("/recall/reset")
-async def recall_reset(req: ResetPasswordRequest, request: Request):
-    ok, reason = await verify_turnstile(request)
-    if not ok:
-        return JSONResponse(status_code=400, content={"error": "人机验证失败", "detail": reason})
-    try:
-        # 1) 验证 OTP 码
-        logger.debug(f"recall_reset: 验证邮箱={req.email} 的 OTP")
-        verify_res = supabase.auth.verify_otp({
-            "email": req.email,
-            "token": req.code,
-            "type": "email",
-        })
-
-        if verify_res.user is None:
-            return JSONResponse(status_code=400, content={"error": "验证码错误或已过期"})
-
-        # 2) 优先使用当前会话更新密码（无需 service role）
-        try:
-            logger.debug("recall_reset: 尝试使用会话调用 auth.update_user 更新密码")
-            upd = supabase.auth.update_user({"password": req.new_password})
-            if getattr(upd, "user", None):
-                logger.info(f"用户 {req.email} 使用会话更新密码成功")
-                return {"msg": "密码重置成功，请使用新密码登录"}
-        except Exception as session_update_err:
-            logger.warning(f"使用会话更新密码失败，将回退到管理员API: {session_update_err}")
-
-        # 3) 回退方案：使用管理员密钥
-        service_role_key = os.getenv("SERVICE_ROLE_KEY")
-        if not service_role_key:
-            logger.warning("未配置 SERVICE_ROLE_KEY，无法使用管理员API重置密码")
-            return JSONResponse(status_code=400, content={
-                "error": "验证码验证成功，但服务端未配置管理员密钥，无法自动重置",
-                "verified": True,
-                "email": req.email,
-                "note": "请联系管理员或稍后重试"
-            })
-
-        try:
-            admin_supabase = create_client(SUPABASE_URL, service_role_key)
-            update_res = admin_supabase.auth.admin.update_user_by_id(
-                verify_res.user.id,
-                {"password": req.new_password},
-            )
-            if getattr(update_res, "user", None):
-                logger.info(f"用户 {req.email} 通过管理员API重置密码成功")
-                return {"msg": "密码重置成功，请使用新密码登录"}
-            logger.error("管理员API返回无用户对象，重置失败")
-            return JSONResponse(status_code=500, content={"error": "密码重置失败"})
-        except Exception as admin_error:
-            # 典型错误：invalid JWT -> SERVICE_ROLE_KEY 与后端 JWT_SECRET 不匹配
-            masked_key = (
-                service_role_key[:6] + "..." + service_role_key[-6:]
-                if len(service_role_key) > 12 else "(长度过短)"
-            )
-            logger.error(
-                "管理员API调用失败: %s | 请检查 SERVICE_ROLE_KEY 是否来自同一 Supabase 实例，且与后端 JWT_SECRET 一致；当前 SUPABASE_URL=%s, SERVICE_ROLE_KEY(prefix/suffix)=%s",
-                str(admin_error), SUPABASE_URL, masked_key,
-            )
-            return JSONResponse(status_code=400, content={
-                "error": "管理员密钥无效或与后端不匹配，无法重置密码",
-                "detail": "invalid_service_role_key",
-            })
-
-    except Exception as e:
-        logger.error(f"密码重置失败: {str(e)}")
-        if "expired" in str(e).lower() or "invalid" in str(e).lower():
-            return JSONResponse(status_code=400, content={"error": "验证码已过期，请重新发送"})
-        return JSONResponse(status_code=400, content={"error": "密码重置失败", "detail": str(e)})
-
-@app.post("/login")
-async def login(req: AuthRequest, response: Response, request: Request):
-    ok, reason = await verify_turnstile(request)
-    if not ok:
-        return JSONResponse(status_code=400, content={"error": "人机验证失败", "detail": reason})
-    try:
-        res = supabase.auth.sign_in_with_password({"email": req.email, "password": req.password})
-    except Exception as e:
-        logger.info(f"{req.email}用户登录失败")
-        return JSONResponse(status_code=400, content={"error": "登录失败,输入密码或账号有误"})
-        # return {"msg": "登录失败,输入密码或账号有误", "access_token": ""}
-        # raise HTTPException(401, detail="登录失败")
-
-    # 登录成功后同样写入 cookie，便于前端 middleware 放行
-    set_auth_cookies(response, res.session.access_token, res.session.refresh_token, res.session.expires_in)
-    return {"msg": "登录成功", "access_token": res.session.access_token}
-
-# 发送邮箱验证码
-@app.post("/otp/send")
-async def otp_send(req: EmailRequest, request: Request):
-    ok, reason = await verify_turnstile(request)
-    if not ok:
-        return JSONResponse(status_code=400, content={"error": "人机验证失败", "detail": reason})
-    try:
-        # should_create_user=True：不存在时自动创建
-        supabase.auth.sign_in_with_otp({"email": req.email, "should_create_user": True})
-        # send OTP 通常不返回 session，若有异常 SDK 会抛错或返回 error
-        return {"ok": True}
-    except Exception as e:
-        return JSONResponse(status_code=400, content={"error": "发送失败", "detail": str(e)})
-
-# 校验验证码并设置 cookie
-@app.post("/otp/verify")
-async def otp_verify(req: VerifyOtpRequest, response: Response, request: Request):
-    ok, reason = await verify_turnstile(request)
-    if not ok:
-        return JSONResponse(status_code=400, content={"error": "人机验证失败", "detail": reason})
-    try:
-        res = supabase.auth.verify_otp({"email": req.email, "token": req.code, "type": "email"})
-    except Exception as e:
-        return JSONResponse(status_code=400, content={"error": "验证码错误或已过期"})
-
-    set_auth_cookies(response, res.session.access_token, res.session.refresh_token, res.session.expires_in)
-    return {"ok": True}
-
-# 支持从 cookie 读取 token（也兼容 ?token=... 方式）
-@app.get("/me")
-async def me(token: str | None = None, access_token: str | None = Cookie(default=None)):
-    token_to_use = token or access_token
-    if not token_to_use:
-        raise HTTPException(401, detail="未登录")
-    user = supabase.auth.get_user(token_to_use).user
-    return user.dict() if user else {"detail": "未登录"}
-
-# 退出登录：清除 cookie
-@app.post("/logout")
-async def logout(response: Response):
-    clear_auth_cookies(response)
-    return {"ok": True}
-
-# 基于当前登录用户，返回已购买的产品/套餐列表
-@app.get("/user/products")
-async def get_user_products(token: str | None = None, access_token: str | None = Cookie(default=None)):
-    token_to_use = token or access_token
-    if not token_to_use:
-        raise HTTPException(401, detail="未登录")
-    if spdb is None:
-        raise HTTPException(500, detail="数据库未初始化")
-    try:
-        user = supabase.auth.get_user(token_to_use).user
-        if not user or not getattr(user, "email", None):
-            raise HTTPException(401, detail="未登录或用户无邮箱信息")
-        email = user.email
-        logger.info(f"查询用户产品: {email}")
-        data = spdb.fetch_data_user(user_email=email)
-        # 统一输出为列表
-        if data is None:
-            data = []
-        return data
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"获取用户产品失败: {e}")
-        raise HTTPException(500, detail="查询失败")
-
 # 健康检查端点
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "timestamp": "2025-01-27T12:00:00Z"}
+# @app.post("/signup")
+# async def signup(req: AuthRequest):
+#     try:
+#         res = supabase.auth.sign_up({"email": req.email, "password": req.password})
+#     except Exception as e:
+#         # 统一错误返回结构
+#         return JSONResponse(status_code=400, content={"error": "注册失败", "detail": str(e)})
+#     return {"msg": "注册成功", "user": res.user.dict()}
+
+# 密码找回 - 发送重置密码邮件
+# @app.post("/recall")
+# async def recall(req: EmailRequest, request: Request):
+#     ok, reason = await verify_turnstile(request)
+#     if not ok:
+#         return JSONResponse(status_code=400, content={"error": "人机验证失败", "detail": reason})
+#     try:
+#         # 验证邮箱是否存在用户
+#         res = supabase.auth.sign_in_with_otp({
+#             "email": req.email, 
+#             "should_create_user": False,
+#             "options": {
+#                 "email_redirect_to": f"{FRONTEND_URL}/recall"
+#             }
+#         })
+#         logger.info(f"密码重置邮件已发送到: {req.email}")
+#         return {"msg": "密码重置邮件已发送，请检查您的邮箱", "email": req.email}
+#     except Exception as e:
+#         logger.error(f"发送密码重置邮件失败: {str(e)}")
+#         # 为了安全，不暴露具体错误信息
+#         return {"msg": "如果该邮箱已注册，密码重置邮件将发送到您的邮箱"}
+
+
+# 重置密码
+# @app.post("/recall/reset")
+# async def recall_reset(req: ResetPasswordRequest, request: Request):
+#     ok, reason = await verify_turnstile(request)
+#     if not ok:
+#         return JSONResponse(status_code=400, content={"error": "人机验证失败", "detail": reason})
+#     try:
+#         # 1) 验证 OTP 码
+#         logger.debug(f"recall_reset: 验证邮箱={req.email} 的 OTP")
+#         verify_res = supabase.auth.verify_otp({
+#             "email": req.email,
+#             "token": req.code,
+#             "type": "email",
+#         })
+#
+#         if verify_res.user is None:
+#             return JSONResponse(status_code=400, content={"error": "验证码错误或已过期"})
+#
+#         # 2) 优先使用当前会话更新密码（无需 service role）
+#         try:
+#             logger.debug("recall_reset: 尝试使用会话调用 auth.update_user 更新密码")
+#             upd = supabase.auth.update_user({"password": req.new_password})
+#             if getattr(upd, "user", None):
+#                 logger.info(f"用户 {req.email} 使用会话更新密码成功")
+#                 return {"msg": "密码重置成功，请使用新密码登录"}
+#         except Exception as session_update_err:
+#             logger.warning(f"使用会话更新密码失败，将回退到管理员API: {session_update_err}")
+#
+#         # 3) 回退方案：使用管理员密钥
+#         service_role_key = os.getenv("SERVICE_ROLE_KEY")
+#         if not service_role_key:
+#             logger.warning("未配置 SERVICE_ROLE_KEY，无法使用管理员API重置密码")
+#             return JSONResponse(status_code=400, content={
+#                 "error": "验证码验证成功，但服务端未配置管理员密钥，无法自动重置",
+#                 "verified": True,
+#                 "email": req.email,
+#                 "note": "请联系管理员或稍后重试"
+#             })
+#
+#         try:
+#             admin_supabase = create_client(SUPABASE_URL, service_role_key)
+#             update_res = admin_supabase.auth.admin.update_user_by_id(
+#                 verify_res.user.id,
+#                 {"password": req.new_password},
+#             )
+#             if getattr(update_res, "user", None):
+#                 logger.info(f"用户 {req.email} 通过管理员API重置密码成功")
+#                 return {"msg": "密码重置成功，请使用新密码登录"}
+#             logger.error("管理员API返回无用户对象，重置失败")
+#             return JSONResponse(status_code=500, content={"error": "密码重置失败"})
+#         except Exception as admin_error:
+#             # 典型错误：invalid JWT -> SERVICE_ROLE_KEY 与后端 JWT_SECRET 不匹配
+#             masked_key = (
+#                 service_role_key[:6] + "..." + service_role_key[-6:]
+#                 if len(service_role_key) > 12 else "(长度过短)"
+#             )
+#             logger.error(
+#                 "管理员API调用失败: %s | 请检查 SERVICE_ROLE_KEY 是否来自同一 Supabase 实例，且与后端 JWT_SECRET 一致；当前 SUPABASE_URL=%s, SERVICE_ROLE_KEY(prefix/suffix)=%s",
+#                 str(admin_error), SUPABASE_URL, masked_key,
+#             )
+#             return JSONResponse(status_code=400, content={
+#                 "error": "管理员密钥无效或与后端不匹配，无法重置密码",
+#                 "detail": "invalid_service_role_key",
+#             })
+#
+#     except Exception as e:
+#         logger.error(f"密码重置失败: {str(e)}")
+#         if "expired" in str(e).lower() or "invalid" in str(e).lower():
+#             return JSONResponse(status_code=400, content={"error": "验证码已过期，请重新发送"})
+#         return JSONResponse(status_code=400, content={"error": "密码重置失败", "detail": str(e)})
+
+# @app.post("/login")
+# async def login(req: AuthRequest, response: Response, request: Request):
+#     ok, reason = await verify_turnstile(request)
+#     if not ok:
+#         return JSONResponse(status_code=400, content={"error": "人机验证失败", "detail": reason})
+#     try:
+#         res = supabase.auth.sign_in_with_password({"email": req.email, "password": req.password})
+#     except Exception as e:
+#         logger.info(f"{req.email}用户登录失败")
+#         return JSONResponse(status_code=400, content={"error": "登录失败,输入密码或账号有误"})
+#
+#     # 登录成功后同样写入 cookie，便于前端 middleware 放行
+#     set_auth_cookies(response, res.session.access_token, res.session.refresh_token, res.session.expires_in)
+#     return {"msg": "登录成功", "access_token": res.session.access_token}
+
+# 发送邮箱验证码
+# @app.post("/otp/send")
+# async def otp_send(req: EmailRequest, request: Request):
+#     ok, reason = await verify_turnstile(request)
+#     if not ok:
+#         return JSONResponse(status_code=400, content={"error": "人机验证失败", "detail": reason})
+#     try:
+#         # should_create_user=True：不存在时自动创建
+#         supabase.auth.sign_in_with_otp({"email": req.email, "should_create_user": True})
+#         # send OTP 通常不返回 session，若有异常 SDK 会抛错或返回 error
+#         return {"ok": True}
+#     except Exception as e:
+#         return JSONResponse(status_code=400, content={"error": "发送失败", "detail": str(e)})
+
+# 校验验证码并设置 cookie
+# @app.post("/otp/verify")
+# async def otp_verify(req: VerifyOtpRequest, response: Response, request: Request):
+#     ok, reason = await verify_turnstile(request)
+#     if not ok:
+#         return JSONResponse(status_code=400, content={"error": "人机验证失败", "detail": reason})
+#     try:
+#         res = supabase.auth.verify_otp({"email": req.email, "token": req.code, "type": "email"})
+#     except Exception as e:
+#         return JSONResponse(status_code=400, content={"error": "验证码错误或已过期"})
+#
+#     set_auth_cookies(response, res.session.access_token, res.session.refresh_token, res.session.expires_in)
+#     return {"ok": True}
+
+# 支持从 cookie 读取 token（也兼容 ?token=... 方式）
+# @app.get("/me")
+# async def me(response: Response, token: str | None = None, access_token: str | None = Cookie(default=None), refresh_token: str | None = Cookie(default=None)):
+#     token_to_use = token or access_token
+#     if not token_to_use:
+#         raise HTTPException(401, detail="未登录")
+#     try:
+#         try:
+#             res = supabase.auth.get_user(token_to_use)
+#         except Exception as e:
+#             msg = str(e).lower()
+#             if refresh_token and ("expired" in msg or "invalid" in msg):
+#                 logger.info("access_token 失效，尝试使用 refresh_token 刷新后重试 /me")
+#                 new_at = refresh_session_and_set_cookies(response, refresh_token)
+#                 if not new_at:
+#                     raise HTTPException(401, detail="登录已过期，请重新登录")
+#                 res = supabase.auth.get_user(new_at)
+#             else:
+#                 raise
+#         user = getattr(res, "user", None)
+#         return user.dict() if user else {"detail": "未登录"}
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         logger.error(f"/me 获取用户失败: {e}")
+#         raise HTTPException(500, detail="查询失败")
+
+# 退出登录：清除 cookie
+# @app.post("/logout")
+# async def logout(response: Response):
+#     clear_auth_cookies(response)
+#     return {"ok": True}
+
+
+
+# 基于当前登录用户，返回已购买的产品/套餐列表
+# 原实现已迁移至 routes/user_data.py 中的 APIRouter，此处注释以避免重复注册
+# @app.get("/user/products")
+# async def get_user_products(response: Response, token: str | None = None, access_token: str | None = Cookie(default=None), refresh_token: str | None = Cookie(default=None)):
+#     token_to_use = token or access_token
+#     if not token_to_use:
+#         raise HTTPException(401, detail="未登录")
+#     if spdb is None:
+#         raise HTTPException(500, detail="数据库未初始化")
+#     try:
+#         try:
+#             _res = supabase.auth.get_user(token_to_use)
+#         except Exception as e:
+#             msg = str(e).lower()
+#             if refresh_token and ("expired" in msg or "invalid" in msg):
+#                 logger.info("access_token 失效，尝试使用 refresh_token 刷新后重试 /user/products")
+#                 new_at = refresh_session_and_set_cookies(response, refresh_token)
+#                 if not new_at:
+#                     raise HTTPException(401, detail="登录已过期，请重新登录")
+#                 _res = supabase.auth.get_user(new_at)
+#             else:
+#                 raise
+#         user = getattr(_res, "user", None)
+#         if not user or not getattr(user, "email", None):
+#             raise HTTPException(401, detail="未登录或用户无邮箱信息")
+#         email = user.email  # type: ignore[assignment]
+#         if not isinstance(email, str) or not email:
+#             raise HTTPException(401, detail="未登录或用户无邮箱信息")
+#         logger.info(f"查询用户产品: {email}")
+#         data = spdb.fetch_data_user(user_email=email)
+#         # 统一输出为列表
+#         if data is None:
+#             data = []
+#         return data
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         logger.error(f"获取用户产品失败: {e}")
+#         raise HTTPException(500, detail="查询失败")
+
+# 基于当前登录用户，返回订单列表
+# 原实现已迁移至 routes/user_data.py 中的 APIRouter，此处注释以避免重复注册
+# @app.get("/user/orders")
+# async def get_user_orders(response: Response, token: str | None = None, access_token: str | None = Cookie(default=None), refresh_token: str | None = Cookie(default=None)):
+#     """返回当前用户的订单列表。
+#     与 /user/products 类似，从 cookie 或 query 读取 token，使用 supabase 校验并获取用户邮箱，
+#     然后调用 spdb.fetch_order_user(user_email=email)。
+#     """
+#     token_to_use = token or access_token
+#     if not token_to_use:
+#         raise HTTPException(401, detail="未登录")
+#     if spdb is None:
+#         raise HTTPException(500, detail="数据库未初始化")
+#     try:
+#         try:
+#             _user_res = supabase.auth.get_user(token_to_use)
+#         except Exception as e:
+#             msg = str(e).lower()
+#             if refresh_token and ("expired" in msg or "invalid" in msg):
+#                 logger.info("access_token 失效，尝试使用 refresh_token 刷新后重试 /user/orders")
+#                 new_at = refresh_session_and_set_cookies(response, refresh_token)
+#                 if not new_at:
+#                     raise HTTPException(401, detail="登录已过期，请重新登录")
+#                 _user_res = supabase.auth.get_user(new_at)
+#             else:
+#                 raise
+#         user = getattr(_user_res, "user", None)
+#         if not user or not getattr(user, "email", None):
+#             raise HTTPException(401, detail="未登录或用户无邮箱信息")
+#         email = user.email  # type: ignore[assignment]
+#         if not isinstance(email, str) or not email:
+#             raise HTTPException(401, detail="未登录或用户无邮箱信息")
+#         logger.info(f"查询用户订单: {email}")
+#         data = spdb.fetch_order_user(user_email=email)
+#         # logger.debug(f"订单数据: {data}")
+#         if data is None:
+#             data = []
+#         return data
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         logger.error(f"获取用户订单失败: {e}")
+#         raise HTTPException(500, detail="查询失败")
+
