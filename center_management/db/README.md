@@ -23,7 +23,7 @@ center_management/db/
 │   ├── test_order_timeout.py        # 订单超时管理测试
 │   ├── test_refactored_code.py      # 重构代码验证测试
 │   └── test_refactored_order.py     # 重构订单功能测试
-└── tests/                  # 原有的测试目录
+
 ```
 
 ## 核心模块
