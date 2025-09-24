@@ -1,4 +1,4 @@
-from base_config import BaseConfig
+from center_management.db.base_config import BaseConfig
 from supabase import create_client, Client
 from supabase.lib.client_options import ClientOptions
 from loguru import logger

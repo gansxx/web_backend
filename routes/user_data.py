@@ -13,11 +13,11 @@ async def get_user_products(
     refresh_token: str | None = Cookie(default=None),
 ):
     supabase = getattr(request.app.state, "supabase", None)
-    spdb = getattr(request.app.state, "spdb", None)
+    pd_db = getattr(request.app.state, "pd_db", None)
     do_refresh = getattr(request.app.state, "refresh_session_and_set_cookies", None)
     if not supabase:
         raise HTTPException(500, detail="Supabase 未初始化")
-    if not spdb:
+    if not pd_db:
         raise HTTPException(500, detail="数据库未初始化")
 
     token_to_use = token or access_token
@@ -45,7 +45,7 @@ async def get_user_products(
             raise HTTPException(401, detail="未登录或用户无邮箱信息")
 
         logger.info(f"查询用户产品: {email}")
-        data = spdb.fetch_data_user(user_email=email)
+        data = pd_db.fetch_product_user(user_email=email)
         return data or []
     except HTTPException:
         raise
@@ -63,12 +63,12 @@ async def get_user_orders(
     refresh_token: str | None = Cookie(default=None),
 ):
     supabase = getattr(request.app.state, "supabase", None)
-    spdb = getattr(request.app.state, "spdb", None)
+    order_db = getattr(request.app.state, "order_db", None)
     do_refresh = getattr(request.app.state, "refresh_session_and_set_cookies", None)
     if not supabase:
         raise HTTPException(500, detail="Supabase 未初始化")
-    if not spdb:
-        raise HTTPException(500, detail="数据库未初始化")
+    if not order_db:
+        raise HTTPException(500, detail="订单数据库未初始化")
 
     token_to_use = token or access_token
     if not token_to_use:
@@ -94,7 +94,7 @@ async def get_user_orders(
         if not isinstance(email, str) or not email:
             raise HTTPException(401, detail="未登录或用户无邮箱信息")
         logger.info(f"查询用户订单: {email}")
-        data = spdb.fetch_order_user(user_email=email)
+        data = order_db.fetch_order_user(user_email=email)
         return data or []
     except HTTPException:
         raise

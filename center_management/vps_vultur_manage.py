@@ -166,15 +166,43 @@ def execute_remote_command(hostname, port, username, key_file, command, timeout=
     Paramiko key types and fall back to passing key_filename to connect().
     """
     ssh = None
+    try:
+        ssh = ssh_connect(hostname, port, username, key_file, timeout=30)
+        return execute_remote_command_with_client(ssh, command, timeout, hostname)
+    except Exception as e:
+        duration = time.time() - time.time()
+        logger.error(f"[SSH] Exception on {hostname}:{port} after {duration:.1f}s: {e}")
+        return 255, '', str(e)
+    finally:
+        if ssh:
+            try:
+                logger.info("Closing SSH connection")
+                ssh.close()
+            except Exception:
+                logger.warning("ssh close failed")
+                pass
+
+
+def execute_remote_command_with_client(ssh_client, command, timeout=600, hostname=None):
+    """使用已建立的SSH连接执行命令并返回 (exit_status, stdout, stderr).
+
+    Args:
+        ssh_client: 已连接的Paramiko SSHClient实例
+        command: 要执行的命令
+        timeout: 命令执行超时时间（秒）
+        hostname: 主机名（用于日志记录）
+    """
     start_ts = time.time()
     # 打印将要执行的命令（做长度截断，避免日志过长）
     _cmd_preview = command if isinstance(command, str) else str(command)
     if len(_cmd_preview) > 200:
         _cmd_preview = _cmd_preview[:200] + ' …(truncated)'
-    logger.info(f"[SSH] Exec on {username}@{hostname}:{port} -> {shlex.quote(_cmd_preview)}")
+
+    host_info = hostname or ssh_client.get_transport().getpeername()[0] if ssh_client.get_transport() else "unknown"
+    logger.info(f"[SSH] Exec on {host_info} -> {shlex.quote(_cmd_preview)}")
+
     try:
-        ssh = ssh_connect(hostname, port, username, key_file, timeout=30)
-        transport = ssh.get_transport()
+        transport = ssh_client.get_transport()
         if not transport:
             raise RuntimeError("SSH transport not available")
         chan = transport.open_session()
@@ -256,22 +284,14 @@ def execute_remote_command(hostname, port, username, key_file, command, timeout=
 
         duration = time.time() - start_ts
         if exit_status == 0:
-            logger.info(f"[SSH] Done rc=0 in {duration:.1f}s on {hostname}")
+            logger.info(f"[SSH] Done rc=0 in {duration:.1f}s on {host_info}")
         else:
-            logger.error(f"[SSH] Failed rc={exit_status} in {duration:.1f}s on {hostname}")
+            logger.error(f"[SSH] Failed rc={exit_status} in {duration:.1f}s on {host_info}")
         return exit_status, out, err
     except Exception as e:
         duration = time.time() - start_ts
-        logger.error(f"[SSH] Exception on {hostname}:{port} after {duration:.1f}s: {e}")
+        logger.error(f"[SSH] Exception on {host_info} after {duration:.1f}s: {e}")
         return 255, '', str(e)
-    finally:
-        if ssh:
-            try:
-                logger.info("Closing SSH connection")
-                ssh.close()
-            except Exception:
-                logger.warning("ssh close failed")
-                pass
 
 
 def ssh_connect(hostname, port, username, key_file, timeout=30):

@@ -8,3 +8,6 @@ pydantic[email]
 uvicorn
 tencentcloud-sdk-python-common
 tencentcloud-sdk-python-dnspod 
+paramiko
+uv
+PyJWT

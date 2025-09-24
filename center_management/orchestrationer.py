@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request, HTTPException
 import json
 from dns import update_record_ip
-from node_manage import fetch_and_save_tables_csv
+from node_manage import fetch_and_save_tables_csv, NodeProxy
 
 
 
@@ -33,9 +33,12 @@ async def warning_bandwidth(request: Request):
         ip=data.get("ip")
         # TODO: 这里可以添加对 ip 的处理逻辑，比如更新 DNS 记录
         # TODO: 还应该添加获得所有现在所有未在线用户的域名列表，然后遍历对所有域名进行修改IP
-        fetch_and_save_tables_csv(hostname=ip,username='root',key_file='id_ed25519',table_names=['user'])
 
-        
+        # 使用NodeProxy共享SSH连接
+        with NodeProxy(ip, 22, 'root', 'id_ed25519') as proxy:
+            fetch_and_save_tables_csv(hostname=ip, username='root', key_file='id_ed25519', table_names=['user'], proxy=proxy)
+
+
     except Exception as e:
         print(e)
         raise HTTPException(status_code=400, detail=str(e))

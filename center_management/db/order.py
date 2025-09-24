@@ -1,4 +1,4 @@
-from base_config import BaseConfig
+from center_management.db.base_config import BaseConfig
 from loguru import logger
 from postgrest.exceptions import APIError
 

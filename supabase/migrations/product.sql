@@ -1,4 +1,4 @@
-create or replace function fetch_user_products_test(
+create or replace function fetch_user_products(
   p_user_email text default null,
   p_phone text default null
 )

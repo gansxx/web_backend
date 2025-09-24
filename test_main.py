@@ -9,7 +9,8 @@ from dotenv import load_dotenv
 from urllib.parse import urlparse
 import requests
 import json
-from center_management.db.spdb_init import spdbConfig
+from center_management.db.product import ProductConfig
+from center_management.db.order import OrderConfig
 
 # 加载环境变量
 load_dotenv()
@@ -142,16 +143,24 @@ def refresh_session_and_set_cookies(response: Response, refresh_token: str) -> s
 # 创建 Supabase 客户端
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
-# 初始化 Supabase 数据库操作（使用 service role key）
+# 初始化 Supabase 产品数据库操作（使用 service role key）
 try:
-    spdb = spdbConfig()
+    pd_db = ProductConfig()
 except Exception as e:
-    logger.error(f"初始化 spdbConfig 失败: {e}")
-    spdb = None
+    logger.error(f"初始化 ProductConfig 失败: {e}")
+    pd_db = None
+
+# 初始化订单数据库操作
+try:
+    order_db = OrderConfig()
+except Exception as e:
+    logger.error(f"初始化 OrderConfig 失败: {e}")
+    order_db = None
 
 # 将共享对象挂载到 app.state，供子路由访问
 app.state.supabase = supabase
-app.state.spdb = spdb
+app.state.pd_db = pd_db
+app.state.order_db = order_db
 app.state.refresh_session_and_set_cookies = refresh_session_and_set_cookies
 app.state.set_auth_cookies = set_auth_cookies
 app.state.clear_auth_cookies = clear_auth_cookies
@@ -183,6 +192,14 @@ try:
     logger.info("routes.auth 已注册")
 except Exception as _e:
     logger.error(f"注册 routes.auth 失败: {_e}")
+
+# 注册 free_plan 路由
+try:
+    from routes.free_plan import router as free_plan_router
+    app.include_router(free_plan_router)
+    logger.info("routes.free_plan 已注册")
+except Exception as _e:
+    logger.error(f"注册 routes.free_plan 失败: {_e}")
 
 class AuthRequest(BaseModel):
     email: EmailStr
@@ -392,7 +409,7 @@ async def health_check():
 #     token_to_use = token or access_token
 #     if not token_to_use:
 #         raise HTTPException(401, detail="未登录")
-#     if spdb is None:
+#     if pd_db is None:
 #         raise HTTPException(500, detail="数据库未初始化")
 #     try:
 #         try:
@@ -414,7 +431,7 @@ async def health_check():
 #         if not isinstance(email, str) or not email:
 #             raise HTTPException(401, detail="未登录或用户无邮箱信息")
 #         logger.info(f"查询用户产品: {email}")
-#         data = spdb.fetch_data_user(user_email=email)
+#         data = pd_db.fetch_data_user(user_email=email)
 #         # 统一输出为列表
 #         if data is None:
 #             data = []
@@ -431,12 +448,12 @@ async def health_check():
 # async def get_user_orders(response: Response, token: str | None = None, access_token: str | None = Cookie(default=None), refresh_token: str | None = Cookie(default=None)):
 #     """返回当前用户的订单列表。
 #     与 /user/products 类似，从 cookie 或 query 读取 token，使用 supabase 校验并获取用户邮箱，
-#     然后调用 spdb.fetch_order_user(user_email=email)。
+#     然后调用 order_db.fetch_order_user(user_email=email)。
 #     """
 #     token_to_use = token or access_token
 #     if not token_to_use:
 #         raise HTTPException(401, detail="未登录")
-#     if spdb is None:
+#     if pd_db is None:
 #         raise HTTPException(500, detail="数据库未初始化")
 #     try:
 #         try:
@@ -458,7 +475,7 @@ async def health_check():
 #         if not isinstance(email, str) or not email:
 #             raise HTTPException(401, detail="未登录或用户无邮箱信息")
 #         logger.info(f"查询用户订单: {email}")
-#         data = spdb.fetch_order_user(user_email=email)
+#         data = order_db.fetch_order_user(user_email=email)
 #         # logger.debug(f"订单数据: {data}")
 #         if data is None:
 #             data = []
