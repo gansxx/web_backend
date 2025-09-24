@@ -49,25 +49,21 @@ python run.py  # Runs on port 8001 by default
 
 ### Database Management
 ```bash
-# Generate database migration
-supabase db diff -f "<description>"
+# Run database sql to test if the updated sql is ok in database
+source .env
+#the command can use to test if the connection to db is ok.It will back Hello world in normal situation 
+ psql "postgresql://postgres:$POSTGRES_PASSWORD@localhost:5438/postgres" -v ON_ERROR_STOP=1 -f supabase/migrations/test.sql
+psql "postgresql://postgres:$POSTGRES_PASSWORD@localhost:5438/postgres" -v ON_ERROR_STOP=1 -f supabase/migrations/*.sql
 
-# Reset database and apply migrations
-supabase db reset
-
-# Push changes to remote Supabase
-supabase link && supabase db push
-
-# Run database tests
-psql "postgresql://postgres:postgres@localhost:54322/postgres" -v ON_ERROR_STOP=1 -f supabase/tests/db/*.sql
 ```
+
 
 ### Testing
 ```bash
 # Run main test
 python test_main.py
 
-# Run database tests
+# Run database api tests
 cd center_management/db && python test_go_db.py
 
 # Run all test scripts
