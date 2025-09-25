@@ -4,12 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Supabase backend project with a Python FastAPI application layer. The system provides:
-- Supabase services (database, auth, storage, real-time, etc.)
-- Python FastAPI backend with custom business logic
-- Payment processing (h5zhifu integration)
-- DNS management with Tencent Cloud
-- Node/VPS management for infrastructure
+This is a production-ready SaaS backend combining Supabase infrastructure with Python FastAPI for custom business logic. The system provides:
+- Complete user authentication and subscription management
+- Payment processing with Chinese payment gateways
+- Automated infrastructure management (VPS, DNS)
+- Real-time order processing with automatic timeout handling
 
 ## Architecture
 

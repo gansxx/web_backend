@@ -1,146 +1,477 @@
 import os
 import json
-import types
+import socket
+from typing import Tuple, List, Optional, Dict, Any
 from tencentcloud.common import credential
 from tencentcloud.common.profile.client_profile import ClientProfile
 from tencentcloud.common.profile.http_profile import HttpProfile
 from tencentcloud.common.exception.tencent_cloud_sdk_exception import TencentCloudSDKException
 from tencentcloud.dnspod.v20210323 import dnspod_client, models
 from loguru import logger
-logger.info("Initializing DNS client,and it's v0.3.2")
-try:
-    # 实例化一个认证对象，入参需要传入腾讯云账户 SecretId 和 SecretKey，此处还需注意密钥对的保密
-    # 代码泄露可能会导致 SecretId 和 SecretKey 泄露，并威胁账号下所有资源的安全性
-    # 以下代码示例仅供参考，建议采用更安全的方式来使用密钥
-    # 请参见：https://cloud.tencent.com/document/product/1278/85305
-    # 密钥可前往官网控制台 https://console.cloud.tencent.com/cam/capi 进行获取
-    cred = credential.Credential(os.getenv("TENCENTCLOUD_SECRET_ID"), os.getenv("TENCENTCLOUD_SECRET_KEY"))
-    # 使用临时密钥示例
-    # cred = credential.Credential("SecretId", "SecretKey", "Token")
-    # 实例化一个http选项，可选的，没有特殊需求可以跳过
-    httpProfile = HttpProfile()
-    httpProfile.endpoint = "dnspod.tencentcloudapi.com"
+from dotenv import load_dotenv
 
-    # 实例化一个client选项，可选的，没有特殊需求可以跳过
-    clientProfile = ClientProfile()
-    clientProfile.httpProfile = httpProfile
-    # 实例化要请求产品的client对象,clientProfile是可选的
-    client = dnspod_client.DnspodClient(cred, "", clientProfile)
+# ① 把 .env 加载进环境变量
+load_dotenv()   # 默认当前目录下的 .env
 
-except TencentCloudSDKException as err:
-    logger.error(err)
-    logger.info("初始化失败")
+class DNSClient:
+    """
+    DNS管理客户端类，用于管理腾讯云DNSPod服务
 
-def create_record(domain, Value, SubDomain, RecordType="A", RecordLine="默认", TTL=600):
-    # 实例化一个请求对象,每个接口都会对应一个request对象
-    req = models.CreateRecordRequest()
-    params = {
-        "Domain": domain,
-        "RecordType": RecordType,
-        "RecordLine": RecordLine,
-        "Value": Value,
-        "SubDomain": SubDomain,
-        "TTL": TTL
-    }
-    try:
-        req.from_json_string(json.dumps(params))
+    这个类封装了DNSPod API的操作，包括创建、更新和查询DNS记录。
+    支持从环境变量加载认证信息，并提供便捷的DNS操作方法。
 
-        # 返回的resp是一个CreateRecordResponse的实例，与请求对象对应
-        resp = client.CreateRecord(req)
-        # 输出json格式的字符串回包
-        logger.info(resp.to_json_string())
-    except TencentCloudSDKException as err:
-        logger.error(err)
+    Environment Variables:
+        TENCENTCLOUD_SECRET_ID: 腾讯云Secret ID
+        TENCENTCLOUD_SECRET_KEY: 腾讯云Secret Key
 
-def update_record_ip(domain, SubDomain, new_ip, record_id=None, RecordType="A", RecordLine="默认", TTL=600):
-    # 实例化一个请求对象,每个接口都会对应一个request对象
-    if record_id is None:
-        try:
-            record_id = get_record_id(domain, SubDomain, RecordType)
-        except Exception as e:
-            logger.error(f"Failed to get record ID: {e}")
+    Example:
+        # 从环境变量初始化
+        dns_client = DNSClient()
+
+        # 创建DNS记录
+        dns_client.create_record("example.com", "1.2.3.4", "www")
+
+        # 检查DNS状态
+        is_match, ips = dns_client.dns_status("example.com", "www", "1.2.3.4")
+    """
+
+    def __init__(self, secret_id: Optional[str] = None, secret_key: Optional[str] = None,
+                 region: str = "", endpoint: str = "dnspod.tencentcloudapi.com"):
+        """
+        初始化DNS客户端
+
+        Args:
+            secret_id: 腾讯云Secret ID，如果为None则从环境变量获取
+            secret_key: 腾讯云Secret Key，如果为None则从环境变量获取
+            region: 区域，默认为空字符串
+            endpoint: API端点，默认为DNSPod API
+        """
+        self.secret_id = secret_id or os.getenv("TENCENTCLOUD_SECRET_ID")
+        self.secret_key = secret_key or os.getenv("TENCENTCLOUD_SECRET_KEY")
+        self.region = region
+        self.endpoint = endpoint
+        self._client = None
+        self._initialized = False
+
+        logger.info("Initializing DNS client v0.4.0")
+
+    def _init_client(self) -> None:
+        """
+        初始化腾讯云客户端
+
+        Raises:
+            ValueError: 当缺少必需的认证信息时
+            TencentCloudSDKException: 当客户端初始化失败时
+        """
+        if self._initialized and self._client:
             return
 
-     # 实例化一个请求对象,每个接口都会对应一个request对象
-    req = models.ModifyRecordRequest()
-    params = {
-        "Domain": domain,
-        "RecordType": RecordType,
-        "RecordLine": RecordLine,
-        "Value": new_ip,
-        "RecordId": record_id,
-        "SubDomain": SubDomain,
-        "TTL": TTL
-    }
-    
-    try:
-        logger.info(f"Updating record ID {record_id} for {SubDomain}.{domain} to new IP {new_ip}")
-        
-        req.from_json_string(json.dumps(params))
-        # 返回的resp是一个UpdateRecordResponse的实例，与请求对象对应
-        # logger.info(f"Update response: {resp.to_json_string()}")
-        resp = client.ModifyRecord(req)
-        # 输出json格式的字符串回包
-        logger.info(resp.to_json_string())
-    except TencentCloudSDKException as err:
-        logger.error(err)
+        if not self.secret_id or not self.secret_key:
+            raise ValueError("TENCENTCLOUD_SECRET_ID and TENCENTCLOUD_SECRET_KEY must be set")
 
-def get_record_id(domain, Subdomain, RecordType="A"):
-    # 实例化一个请求对象,每个接口都会对应一个request对象
-    try:
-        req = models.DescribeRecordListRequest()
-        params = {
-            "Domain": domain,
-            "Subdomain": Subdomain,
-            "RecordType": RecordType
-        }
-        req.from_json_string(json.dumps(params))
+        try:
+            # 实例化认证对象
+            cred = credential.Credential(self.secret_id, self.secret_key)
 
-        # 返回的resp是一个DescribeRecordListResponse的实例，与请求对象对应
-        resp = client.DescribeRecordList(req)
-        # 输出json格式的字符串回包
-        logger.info(resp.to_json_string())
-        return resp.RecordList[0].RecordId
-    except TencentCloudSDKException as err:
-        logger.error(err)
-        logger.info("查询失败")
+            # 实例化HTTP选项
+            http_profile = HttpProfile()
+            http_profile.endpoint = self.endpoint
+
+            # 实例化客户端选项
+            client_profile = ClientProfile()
+            client_profile.httpProfile = http_profile
+
+            # 实例化DNSPod客户端
+            self._client = dnspod_client.DnspodClient(cred, self.region, client_profile)
+            self._initialized = True
+
+            logger.info("DNS client initialized successfully")
+
+        except TencentCloudSDKException as err:
+            logger.error(f"Failed to initialize DNS client: {err}")
+            raise
+        except Exception as err:
+            logger.error(f"Unexpected error during DNS client initialization: {err}")
+            raise
+
+    @property
+    def client(self):
+        """获取腾讯云客户端实例，延迟初始化"""
+        if not self._initialized:
+            self._init_client()
+        return self._client
+
+    def validate_credentials(self) -> bool:
+        """
+        验证认证信息是否有效
+
+        Returns:
+            bool: 认证信息是否有效
+        """
+        if not self.secret_id or not self.secret_key:
+            logger.error("Missing DNS credentials")
+            return False
+
+        try:
+            # 尝试初始化客户端来验证凭证
+            self._init_client()
+            return True
+        except Exception as err:
+            logger.error(f"Invalid DNS credentials: {err}")
+            return False
+
+    def create_record(self, domain: str, value: str, subdomain: str,
+                     record_type: str = "A", record_line: str = "默认",
+                     ttl: int = 600) -> bool:
+        """
+        创建DNS记录
+
+        Args:
+            domain: 域名（如 example.com）
+            value: 记录值（如 IP地址）
+            subdomain: 子域名（如 www 或 @）
+            record_type: 记录类型（A、CNAME等）
+            record_line: 解析线路（如 默认）
+            ttl: TTL值
+
+        Returns:
+            bool: 创建成功返回True，失败返回False
+
+        Raises:
+            TencentCloudSDKException: API调用失败
+            ValueError: 参数验证失败
+        """
+        if not all([domain, value, subdomain]):
+            raise ValueError("Domain, value, and subdomain are required")
+
+        try:
+            logger.info(f"Creating DNS record: {subdomain}.{domain} -> {value}")
+
+            # 实例化请求对象
+            req = models.CreateRecordRequest()
+            params = {
+                "Domain": domain,
+                "RecordType": record_type,
+                "RecordLine": record_line,
+                "Value": value,
+                "SubDomain": subdomain,
+                "TTL": ttl
+            }
+
+            req.from_json_string(json.dumps(params))
+
+            # 发送请求
+            resp = self.client.CreateRecord(req)
+
+            logger.info(f"DNS record created successfully: {resp.to_json_string()}")
+            return True
+
+        except TencentCloudSDKException as err:
+            logger.error(f"Failed to create DNS record: {err}")
+            raise
+        except Exception as err:
+            logger.error(f"Unexpected error creating DNS record: {err}")
+            raise
+
+    def update_record_ip(self, domain: str, subdomain: str, new_ip: str,
+                        record_id: Optional[int] = None, record_type: str = "A",
+                        record_line: str = "默认", ttl: int = 600) -> bool:
+        """
+        更新DNS记录IP地址
+
+        Args:
+            domain: 域名
+            subdomain: 子域名
+            new_ip: 新的IP地址
+            record_id: 记录ID，如果为None则自动查询
+            record_type: 记录类型
+            record_line: 解析线路
+            ttl: TTL值
+
+        Returns:
+            bool: 更新成功返回True，失败返回False
+
+        Raises:
+            TencentCloudSDKException: API调用失败
+            ValueError: 参数验证失败
+        """
+        if not all([domain, subdomain, new_ip]):
+            raise ValueError("Domain, subdomain, and new_ip are required")
+
+        try:
+            # 如果没有提供record_id，则查询获取
+            if record_id is None:
+                record_id = self.get_record_id(domain, subdomain, record_type)
+                if record_id is None:
+                    raise ValueError(f"Record not found for {subdomain}.{domain}")
+
+            logger.info(f"Updating record ID {record_id} for {subdomain}.{domain} to new IP {new_ip}")
+
+            # 实例化请求对象
+            req = models.ModifyRecordRequest()
+            params = {
+                "Domain": domain,
+                "RecordType": record_type,
+                "RecordLine": record_line,
+                "Value": new_ip,
+                "RecordId": record_id,
+                "SubDomain": subdomain,
+                "TTL": ttl
+            }
+
+            req.from_json_string(json.dumps(params))
+
+            # 发送请求
+            resp = self.client.ModifyRecord(req)
+
+            logger.info(f"DNS record updated successfully: {resp.to_json_string()}")
+            return True
+
+        except TencentCloudSDKException as err:
+            logger.error(f"Failed to update DNS record: {err}")
+            raise
+        except Exception as err:
+            logger.error(f"Unexpected error updating DNS record: {err}")
+            raise
+
+    def get_record_id(self, domain: str, subdomain: str, record_type: str = "A") -> Optional[int]:
+        """
+        获取DNS记录ID
+
+        Args:
+            domain: 域名
+            subdomain: 子域名
+            record_type: 记录类型
+
+        Returns:
+            Optional[int]: 记录ID，如果未找到则返回None
+
+        Raises:
+            TencentCloudSDKException: API调用失败
+        """
+        try:
+            logger.info(f"Getting record ID for {subdomain}.{domain}")
+
+            # 实例化请求对象
+            req = models.DescribeRecordListRequest()
+            params = {
+                "Domain": domain,
+                "Subdomain": subdomain,
+                "RecordType": record_type
+            }
+
+            req.from_json_string(json.dumps(params))
+
+            # 发送请求
+            resp = self.client.DescribeRecordList(req)
+
+            logger.info(f"Record list response: {resp.to_json_string()}")
+
+            # 检查是否有记录
+            if hasattr(resp, 'RecordList') and resp.RecordList:
+                return resp.RecordList[0].RecordId
+            else:
+                logger.warning(f"No record found for {subdomain}.{domain}")
+                return None
+
+        except TencentCloudSDKException as err:
+            logger.error(f"Failed to get record ID: {err}")
+            raise
+        except Exception as err:
+            logger.error(f"Unexpected error getting record ID: {err}")
+            raise
+
+    def dns_status(self, domain: str, subdomain: str, expected_ip: str = "",
+                  record_type: str = "A") -> Tuple[bool, List[str]]:
+        """
+        检查域名记录是否已在公共DNS生效
+
+        Args:
+            domain: 顶级域名（如 example.com）
+            subdomain: 子域名（如 www 或 @）
+            expected_ip: 期望的IP地址（可选）
+            record_type: 记录类型（当前仅支持A记录）
+
+        Returns:
+            Tuple[bool, List[str]]: (是否匹配期望IP, 当前解析到的IP列表)
+
+        Raises:
+            Exception: DNS解析失败
+        """
+        # 构建完整域名
+        if subdomain in (None, "", "@"):
+            fqdn = domain
+        else:
+            fqdn = f"{subdomain}.{domain}"
+
+        try:
+            logger.info(f"Checking DNS status for {fqdn} (type: {record_type})")
+
+            # 使用系统解析器解析域名，获取所有地址信息
+            infos = socket.getaddrinfo(fqdn, None)
+
+            # 从address info中抽取IP
+            ips = []
+            for ai in infos:
+                try:
+                    ip = ai[4][0]
+                    if ip not in ips:
+                        ips.append(ip)
+                except Exception:
+                    continue
+
+            logger.info(f"DNS status: {fqdn} -> {ips}")
+
+            # 检查是否匹配期望IP
+            if expected_ip:
+                return (expected_ip in ips, ips)
+            else:
+                return (bool(ips), ips)
+
+        except Exception as err:
+            logger.error(f"DNS resolution failed for {fqdn}: {err}")
+            return (False, [])
+
+    def list_records(self, domain: str, record_type: Optional[str] = None,
+                    subdomain: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        列出域名下的所有DNS记录
+
+        Args:
+            domain: 域名
+            record_type: 可选，按记录类型过滤
+            subdomain: 可选，按子域名过滤
+
+        Returns:
+            List[Dict[str, Any]]: DNS记录列表
+        """
+        try:
+            logger.info(f"Listing records for domain: {domain}")
+
+            req = models.DescribeRecordListRequest()
+            params = {"Domain": domain}
+
+            if record_type:
+                params["RecordType"] = record_type
+            if subdomain:
+                params["Subdomain"] = subdomain
+
+            req.from_json_string(json.dumps(params))
+
+            resp = self.client.DescribeRecordList(req)
+
+            records = []
+            if hasattr(resp, 'RecordList') and resp.RecordList:
+                for record in resp.RecordList:
+                    records.append({
+                        "record_id": record.RecordId,
+                        "name": record.Name,
+                        "type": record.Type,
+                        "value": record.Value,
+                        "ttl": record.TTL,
+                        "status": record.Status,
+                        "updated_on": record.UpdatedOn
+                    })
+
+            logger.info(f"Found {len(records)} records for domain {domain}")
+            return records
+
+        except TencentCloudSDKException as err:
+            logger.error(f"Failed to list records: {err}")
+            raise
+        except Exception as err:
+            logger.error(f"Unexpected error listing records: {err}")
+            raise
 
 
-def dns_status(domain, SubDomain, expected_ip, RecordType="A"):
+# 为了向后兼容，创建全局DNS客户端实例
+# 这使得现有代码可以在不修改的情况下继续工作
+_global_dns_client = None
+
+
+def get_global_dns_client() -> DNSClient:
     """
-    检查域名记录是否已在公共 DNS 生效（是否解析到 expected_ip）。
+    获取全局DNS客户端实例
 
-    返回 (bool, list) -> (是否匹配, 当前解析到的 IP 列表)
-
-    参数:
-    - domain: 顶级域名，例如 'example.com'
-    - SubDomain: 子域名，例如 'www' 或 '@' 或 ''
-    - expected_ip: 期望的 IP 地址字符串，例如 '1.2.3.4'
-    - RecordType: 当前仅支持 'A'，保留参数兼容性
+    Returns:
+        DNSClient: 全局DNS客户端实例
     """
-    import socket
+    global _global_dns_client
+    if _global_dns_client is None:
+        _global_dns_client = DNSClient()
+    return _global_dns_client
 
-    if SubDomain in (None, "", "@"):
-        fqdn = domain
-    else:
-        fqdn = f"{SubDomain}.{domain}"
 
-    try:
-        # 使用系统解析器解析域名，获取所有地址信息
-        infos = socket.getaddrinfo(fqdn, None)
-        # 从 address info 中抽取 IP
-        ips = []
-        for ai in infos:
-            try:
-                ip = ai[4][0]
-                if ip not in ips:
-                    ips.append(ip)
-            except Exception:
-                continue
+# 向后兼容的函数接口
+def create_record(domain: str, value: str, subdomain: str, record_type: str = "A",
+                 record_line: str = "默认", ttl: int = 600) -> bool:
+    """
+    向后兼容的DNS记录创建函数
 
-        logger.info("dns_status: %s -> %s" % (fqdn, ips))
-        return (expected_ip in ips, ips)
-    except Exception as e:
-        logger.error(e)
-        return (False, [])
-        
+    Args:
+        domain: 域名
+        value: 记录值
+        subdomain: 子域名
+        record_type: 记录类型
+        record_line: 解析线路
+        ttl: TTL值
+
+    Returns:
+        bool: 创建成功返回True，失败返回False
+    """
+    client = get_global_dns_client()
+    return client.create_record(domain, value, subdomain, record_type, record_line, ttl)
+
+
+def update_record_ip(domain: str, subdomain: str, new_ip: str, record_id: Optional[int] = None,
+                    record_type: str = "A", record_line: str = "默认", ttl: int = 600) -> bool:
+    """
+    向后兼容的DNS记录更新函数
+
+    Args:
+        domain: 域名
+        subdomain: 子域名
+        new_ip: 新IP地址
+        record_id: 记录ID
+        record_type: 记录类型
+        record_line: 解析线路
+        ttl: TTL值
+
+    Returns:
+        bool: 更新成功返回True，失败返回False
+    """
+    client = get_global_dns_client()
+    return client.update_record_ip(domain, subdomain, new_ip, record_id, record_type, record_line, ttl)
+
+
+def get_record_id(domain: str, subdomain: str, record_type: str = "A") -> Optional[int]:
+    """
+    向后兼容的记录ID查询函数
+
+    Args:
+        domain: 域名
+        subdomain: 子域名
+        record_type: 记录类型
+
+    Returns:
+        Optional[int]: 记录ID
+    """
+    client = get_global_dns_client()
+    return client.get_record_id(domain, subdomain, record_type)
+
+
+def dns_status(domain: str, subdomain: str, expected_ip: str = "", record_type: str = "A") -> Tuple[bool, List[str]]:
+    """
+    向后兼容的DNS状态检查函数
+
+    Args:
+        domain: 域名
+        subdomain: 子域名
+        expected_ip: 期望IP
+        record_type: 记录类型
+
+    Returns:
+        Tuple[bool, List[str]]: (是否匹配, IP列表)
+    """
+    client = get_global_dns_client()
+    return client.dns_status(domain, subdomain, expected_ip, record_type)
