@@ -36,7 +36,7 @@ async def warning_bandwidth(request: Request):
 
         # 使用NodeProxy共享SSH连接
         with NodeProxy(ip, 22, 'root', 'id_ed25519') as proxy:
-            fetch_and_save_tables_csv(hostname=ip, username='root', key_file='id_ed25519', table_names=['user'], proxy=proxy)
+            fetch_and_save_tables_csv(proxy=proxy, table_names=['user'])
 
 
     except Exception as e:

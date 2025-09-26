@@ -11,7 +11,7 @@ from pathlib import Path
 from datetime import datetime
 from dns import DNSClient, get_global_dns_client
 
-hostname='202.182.106.233'
+hostname='45.32.252.106'
 logger.info(f"默认测试服务器地址: {hostname}")
 logger.info("本测试默认使用id_ed25519私钥文件，请确保该文件存在可用，且为云端私钥")
 
@@ -20,35 +20,23 @@ def test_add_user(hostname=hostname, proxy=None):
     print("=== 添加用户测试 ===")
 
     if proxy is None:
+        with nmanage.NodeProxy(hostname, 22, 'root', 'id_ed25519') as proxy:
+            exit_status, hy2_link, out, err = nmanage.run_remote_self_sb_change(
+                proxy=proxy,
+                port_arg=8957,
+                name_arg='supo_alfa@go.com',
+                up_mbps=50,
+                down_mbps=50
+            )
+    else:
+        # 使用提供的NodeProxy
         exit_status, hy2_link, out, err = nmanage.run_remote_self_sb_change(
-            hostname=hostname,
-            port=22,
-            username='root',
-            key_file='id_ed25519',
+            proxy=proxy,
             port_arg=8957,
             name_arg='supo_alfa@go.com',
             up_mbps=50,
             down_mbps=50
         )
-    else:
-        # 使用提供的NodeProxy
-        args = []
-        args.append(f"-p {8957}")
-        args.append(f"-n {nmanage.shlex.quote('supo_alfa@go.com')}")
-        args.append(f"-u {50}")
-        args.append(f"-d {50}")
-        argstr = ' '.join(args)
-        command = f"sudo /root/sing-box-v2ray/self_sb_change.sh {argstr}"
-        logger.info(f"Executing remote script on {hostname}: {command}")
-
-        exit_status, out, err = proxy.execute_command(command)
-
-        # 尝试从 stdout 中解析 hy2_link，脚本以打印 hy2_link 为最后一部分
-        hy2_link = None
-        if out:
-            m = re.search(r"hysteria2://[A-Za-z0-9\-._~%:@/?&=+#]+", out)
-            if m:
-                hy2_link = m.group(0)
 
     print(f"Exit Status: {exit_status}")
     print(f"HY2 Link: {hy2_link}")
@@ -159,18 +147,13 @@ def test_fetch_db(hostname=hostname, proxy=None):
     try:
         if proxy is None:
             # 使用新的直接查询方法
-            x = nmanage.fetch_db_data_direct(
-                hostname=hostname,
-                username='root',
-                key_file='/root/.ssh/id_ed25519',
-            )
+            with nmanage.NodeProxy(hostname, 22, 'root', '/root/.ssh/id_ed25519') as proxy:
+                x = nmanage.fetch_db_data_direct(proxy=proxy)
         else:
             logger.info(f"使用 Nodeproxy 从 {hostname} 直接获取数据库数据")
             # 使用提供的NodeProxy进行数据库直接查询
             x = nmanage.fetch_db_data_direct(
-                hostname=hostname,
-                username='root',
-                key_file='/root/.ssh/id_ed25519',
+                proxy=proxy,
                 table_names=['users'],
                 db_path='/var/lib/sing-box/v2api_stats.db'
             )
@@ -197,13 +180,12 @@ def test_save_csv(hostname=hostname, proxy=None):
     print("=== 远端数据读取保存为CSV测试 ===")
     try:
         # 使用新的直接查询方法获取数据
-        data = nmanage.fetch_db_data_direct(
-            hostname=hostname,
-            username='root',
-            key_file='/root/.ssh/id_ed25519',
-            table_names=['users','alarm_status'],
-            db_path='/var/lib/sing-box/v2api_stats.db'
-        )
+        with nmanage.NodeProxy(hostname, 22, 'root', '/root/.ssh/id_ed25519') as proxy:
+            data = nmanage.fetch_db_data_direct(
+                proxy=proxy,
+                table_names=['users','alarm_status'],
+                db_path='/var/lib/sing-box/v2api_stats.db'
+            )
 
         # 当未指定 out_dir 时，默认保存至 ./csv/<hostname>/ 目录下
         from pathlib import Path
@@ -250,109 +232,11 @@ def test_remote_ports(hostname=hostname, proxy=None):
     print("=== 获取远端端口测试 ===")
     try:
         if proxy is None:
-            ports_by_protocol = nmanage.get_remote_ports_by_protocol(
-                hostname=hostname,
-                port=22,
-                username='root',
-                key_file='/root/.ssh/id_ed25519'
-            )
+            with nmanage.NodeProxy(hostname, 22, 'root', '/root/.ssh/id_ed25519') as proxy:
+                ports_by_protocol = nmanage.get_remote_ports_by_protocol(proxy=proxy)
         else:
             # 使用提供的NodeProxy获取端口信息
-            logger.info(f"Getting remote ports from {hostname}")
-
-            # 先尝试 ss 命令，如果失败则使用 netstat 命令
-            cmd = "ss -tuln"
-            exit_status, output, error = proxy.execute_command(cmd, timeout=30)
-
-            # 如果 ss 命令失败，尝试使用 netstat
-            if exit_status != 0:
-                logger.warning("ss command failed, trying netstat...")
-                cmd = "netstat -tuln"
-                exit_status, output, error = proxy.execute_command(cmd, timeout=30)
-
-                if exit_status != 0:
-                    logger.error(f"Both ss and netstat commands failed: {error}")
-                    ports_by_protocol = {}
-                else:
-                    # 解析输出并按协议分组
-                    ports_by_protocol = {'tcp': [], 'udp': [], 'tcp6': [], 'udp6': []}
-                    for line in output.strip().split('\n'):
-                        line = line.strip()
-                        if not line or line.startswith('Netid') or line.startswith('Proto') or line.startswith('Active'):
-                            continue
-
-                        # 解析 ss/netstat 命令输出格式
-                        parts = line.split()
-                        if len(parts) >= 5:
-                            protocol = parts[0].lower()
-                            address = parts[4]  # Local Address:Port 在第5列
-
-                            # 处理 IPv6 地址格式 [::]:port 或 127.0.0.1:port
-                            if ']:' in address:
-                                port_part = address.split(']:')[-1]
-                            elif ':' in address:
-                                port_part = address.split(':')[-1]
-                            else:
-                                port_part = address
-
-                            # 移除可能的 * 前缀
-                            port_part = port_part.lstrip('*')
-
-                            if port_part.isdigit():
-                                port = int(port_part)
-
-                                # 根据地址类型判断协议版本
-                                if '[' in address or '::' in address:
-                                    protocol_key = f"{protocol}6"
-                                else:
-                                    protocol_key = protocol
-
-                                if protocol_key in ports_by_protocol:
-                                    if port not in ports_by_protocol[protocol_key]:
-                                        ports_by_protocol[protocol_key].append(port)
-
-                    # 过滤掉空列表并排序
-                    ports_by_protocol = {k: sorted(v) for k, v in ports_by_protocol.items() if v}
-            else:
-                # 解析输出并按协议分组
-                ports_by_protocol = {'tcp': [], 'udp': [], 'tcp6': [], 'udp6': []}
-                for line in output.strip().split('\n'):
-                    line = line.strip()
-                    if not line or line.startswith('Netid') or line.startswith('Proto') or line.startswith('Active'):
-                        continue
-
-                    # 解析 ss/netstat 命令输出格式
-                    parts = line.split()
-                    if len(parts) >= 5:
-                        protocol = parts[0].lower()
-                        address = parts[4]  # Local Address:Port 在第5列
-
-                        # 处理 IPv6 地址格式 [::]:port 或 127.0.0.1:port
-                        if ']:' in address:
-                            port_part = address.split(']:')[-1]
-                        elif ':' in address:
-                            port_part = address.split(':')[-1]
-                        else:
-                            port_part = address
-
-                        # 移除可能的 * 前缀
-                        port_part = port_part.lstrip('*')
-
-                        if port_part.isdigit():
-                            port = int(port_part)
-
-                            # 根据地址类型判断协议版本
-                            if '[' in address or '::' in address:
-                                protocol_key = f"{protocol}6"
-                            else:
-                                protocol_key = protocol
-
-                            if protocol_key in ports_by_protocol:
-                                if port not in ports_by_protocol[protocol_key]:
-                                    ports_by_protocol[protocol_key].append(port)
-
-                # 过滤掉空列表并排序
-                ports_by_protocol = {k: sorted(v) for k, v in ports_by_protocol.items() if v}
+            ports_by_protocol = nmanage.get_remote_ports_by_protocol(proxy=proxy)
 
         if not ports_by_protocol:
             print("❌ 未获取到端口信息或获取失败")
@@ -440,9 +324,6 @@ def test_shared_connection(hostname=hostname):
             # 4. 测试数据库读取（使用新的直接查询方法）
             logger.info("4. 测试数据库读取（直接查询）...")
             data = nmanage.fetch_db_data_direct(
-                hostname=hostname,
-                username='root',
-                key_file='/root/.ssh/id_ed25519',
                 proxy=proxy,
                 db_path='/var/lib/sing-box/v2api_stats.db'
             )
@@ -485,13 +366,7 @@ def get_or_create_port_csv(hostname, proxy):
 
         # 获取远程端口信息
         logger.info("获取远程端口信息...")
-        ports_by_protocol = nmanage.get_remote_ports_by_protocol(
-            hostname=hostname,
-            port=22,
-            username='root',
-            key_file='/root/.ssh/id_ed25519',
-            proxy=proxy
-        )
+        ports_by_protocol = nmanage.get_remote_ports_by_protocol(proxy=proxy)
 
         # 写入CSV文件
         with open(csv_file, 'w', newline='', encoding='utf-8') as f:
@@ -618,7 +493,7 @@ def test_add_user_with_smart_port(name_arg, hostname=hostname, max_retries=3):
                 logger.info(f"选择端口: {selected_port}")
 
                 try:
-                    # 调用添加用户函数
+                    # 调用添加用户函数（复用现有proxy连接）
                     logger.info(f"使用端口 {selected_port} 添加用户 {name_arg}...")
                     exit_status, hy2_link, out, err = nmanage.run_remote_self_sb_change(
                         hostname=hostname,
@@ -628,7 +503,8 @@ def test_add_user_with_smart_port(name_arg, hostname=hostname, max_retries=3):
                         port_arg=selected_port,
                         name_arg=name_arg,
                         up_mbps=50,
-                        down_mbps=50
+                        down_mbps=50,
+                        proxy=proxy
                     )
 
                     if exit_status == 0 and hy2_link:

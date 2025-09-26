@@ -2,6 +2,8 @@
 # test_hysteria.sh — start a local hysteria client from a hyst2 link and verify via socks5 curl
 set -euo pipefail
 
+chmod +x hysteria
+
 # Create logs directory if it doesn't exist
 LOGS_DIR="./logs"
 mkdir -p "$LOGS_DIR"

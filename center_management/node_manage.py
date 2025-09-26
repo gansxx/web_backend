@@ -94,8 +94,16 @@ def node_proxy_context(hostname, port=22, username='root', key_file=None, timeou
 	finally:
 		proxy.disconnect()
 
-def run_remote_self_sb_change(hostname, port, username, key_file, port_arg=None, name_arg=None, up_mbps=None, down_mbps=None, script_path='/root/sing-box-v2ray/self_sb_change.sh'):
+def run_remote_self_sb_change(proxy, port_arg=None, name_arg=None, up_mbps=None, down_mbps=None, script_path='/root/sing-box-v2ray/self_sb_change.sh'):
 	"""在远端执行已存在的 self_sb_change.sh 脚本以注册用户，并返回 hy2_link。
+
+	参数:
+		proxy: NodeProxy对象，用于SSH连接
+		port_arg: 端口参数
+		name_arg: 用户名参数
+		up_mbps: 上传带宽限制
+		down_mbps: 下载带宽限制
+		script_path: 脚本路径
 
 	返回值: (exit_status, hy2_link_or_none, stdout, stderr)
 	"""
@@ -111,10 +119,9 @@ def run_remote_self_sb_change(hostname, port, username, key_file, port_arg=None,
 
 	argstr = ' '.join(args)
 	command = f"sudo {script_path} {argstr}"
-	logger.info(f"Executing remote script on {hostname}: {command}")
+	logger.info(f"Executing remote script: {command}")
 
-	with NodeProxy(hostname, port, username, key_file) as proxy:
-		exit_status, out, err = proxy.execute_command(command)
+	exit_status, out, err = proxy.execute_command(command)
 
 	# 尝试从 stdout 中解析 hy2_link，脚本以打印 hy2_link 为最后一部分
 	hy2_link = None
@@ -161,13 +168,11 @@ def verify_hy2_link(uri, script_path=None, timeout=30, cwd=None):
 # 运行远端数据获取功能
 
 
-def find_database_file(hostname, username, key_file, possible_paths=None, timeout=10):
+def find_database_file(proxy, possible_paths=None, timeout=10):
 	"""在远程服务器上查找数据库文件
 
 	参数:
-		hostname: 远程服务器地址
-		username: 用户名
-		key_file: SSH密钥文件
+		proxy: NodeProxy对象，用于SSH连接
 		possible_paths: 可能的数据库路径列表
 		timeout: 超时时间
 
@@ -182,182 +187,161 @@ def find_database_file(hostname, username, key_file, possible_paths=None, timeou
 			'/tmp/v2api_stats.db'
 		]
 
-	logger.info(f"Searching for database file on {hostname}")
+	logger.info("Searching for database file")
 
-	with NodeProxy(hostname, 22, username, key_file, timeout=timeout) as proxy:
-		for path in possible_paths:
-			# 检查文件是否存在
-			cmd = f"test -f '{path}' && echo 'exists' || echo 'not_exists'"
-			exit_status, out, err = proxy.execute_command(cmd, timeout=10)
+	for path in possible_paths:
+		# 检查文件是否存在
+		cmd = f"test -f '{path}' && echo 'exists' || echo 'not_exists'"
+		exit_status, out, err = proxy.execute_command(cmd, timeout=timeout)
 
-			if exit_status == 0 and 'exists' in out.strip():
-				# 验证文件是否是有效的SQLite数据库
-				cmd = f"file '{path}'"
-				exit_status, out, err = proxy.execute_command(cmd, timeout=10)
-				if exit_status == 0 and 'SQLite' in out:
-					logger.info(f"Found database file: {path}")
-					return path
+		if exit_status == 0 and 'exists' in out.strip():
+			# 验证文件是否是有效的SQLite数据库
+			cmd = f"file '{path}'"
+			exit_status, out, err = proxy.execute_command(cmd, timeout=timeout)
+			if exit_status == 0 and 'SQLite' in out:
+				logger.info(f"Found database file: {path}")
+				return path
 
 	logger.warning("No valid database file found")
 	return None
 
 
-def fetch_db_data_direct(hostname, username, key_file, table_names=None, db_path=None, timeout=10, proxy=None):
+def fetch_db_data_direct(proxy, table_names=None, db_path=None, timeout=10):
 	"""直接在远程服务器上查询数据库并返回数据（不复制文件）
 
 	参数:
-		hostname: 远程服务器地址
-		username: 用户名
-		key_file: SSH密钥文件
+		proxy: NodeProxy对象，用于SSH连接
 		table_names: 要查询的表名列表，None表示查询['users']
 		db_path: 数据库文件路径，None表示自动查找
 		timeout: 超时时间
-		proxy: 可选的NodeProxy对象，用于共享SSH连接
 
 	返回: dict, key为表名, value为list[dict]（每行为dict列名->值）
 	"""
 	if table_names is None:
 		table_names = ['users']
 
-	logger.info(f"Direct query database on {hostname}")
+	logger.info("Direct query database")
 
 	# 如果没有指定数据库路径，自动查找
 	if db_path is None:
-		db_path = find_database_file(hostname, username, key_file, timeout=timeout)
+		db_path = find_database_file(proxy, timeout=timeout)
 		if not db_path:
 			raise FileNotFoundError("Database file not found on remote server")
 
 	logger.info(f"Using database: {db_path}")
 
-	# 使用提供的proxy或创建新的
-	if proxy is None:
-		proxy_context = NodeProxy(hostname, 22, username, key_file, timeout=timeout)
-		proxy_to_use = proxy_context
-		should_close = True
-	else:
-		proxy_to_use = proxy
-		should_close = False
+	results = {}
 
-	try:
-		results = {}
+	for table in table_names:
+		try:
+			logger.info(f"Querying table: {table}")
 
-		for table in table_names:
+			# 检查表是否存在
+			check_cmd = f"sqlite3 '{db_path}' \"SELECT name FROM sqlite_master WHERE type='table' AND name='{table}';\""
+			exit_status, out, err = proxy.execute_command(check_cmd, timeout=timeout)
+
+			if exit_status != 0 or not out.strip():
+				logger.warning(f"Table {table} does not exist")
+				results[table] = []
+				continue
+
+			# 查询表结构
+			structure_cmd = f"sqlite3 '{db_path}' \"PRAGMA table_info('{table}');\""
+			exit_status, out, err = proxy.execute_command(structure_cmd, timeout=timeout)
+
+			if exit_status != 0:
+				logger.warning(f"Failed to get structure for table {table}")
+				results[table] = []
+				continue
+
+			# 解析表结构
+			lines = out.strip().split('\n')
+			columns = []
+			for line in lines:
+				if line.strip():
+					parts = line.split('|')
+					if len(parts) >= 2:
+						columns.append(parts[1])  # 列名在第二个位置
+
+			if not columns:
+				logger.warning(f"No columns found for table {table}")
+				results[table] = []
+				continue
+
+			# 查询表数据，以JSON格式返回
+			# 构建JSON对象字段映射
+			json_mappings = []
+			for col in columns:
+				json_mappings.append(f"'{col}', {col}")
+			json_mapping_str = ", ".join(json_mappings)
+			query_cmd = f"sqlite3 '{db_path}' \"SELECT json_group_array(json_object({json_mapping_str})) FROM (SELECT * FROM '{table}');\""
+			exit_status, out, err = proxy.execute_command(query_cmd, timeout=30)
+
+			if exit_status != 0:
+				logger.warning(f"Failed to query data from table {table}")
+				results[table] = []
+				continue
+
+			# 解析JSON结果
+			import json
 			try:
-				logger.info(f"Querying table: {table}")
+				data = json.loads(out.strip())
+				results[table] = data
+			except json.JSONDecodeError as e:
+				logger.warning(f"Failed to parse JSON from table {table}: {e}")
+				# 回退到CSV格式
+				csv_cmd = f"sqlite3 '{db_path}' \".headers on\" \".mode csv\" \"SELECT * FROM '{table}';\""
+				exit_status, csv_out, csv_err = proxy.execute_command(csv_cmd, timeout=30)
 
-				# 检查表是否存在
-				check_cmd = f"sqlite3 '{db_path}' \"SELECT name FROM sqlite_master WHERE type='table' AND name='{table}';\""
-				exit_status, out, err = proxy_to_use.execute_command(check_cmd, timeout=10)
-
-				if exit_status != 0 or not out.strip():
-					logger.warning(f"Table {table} does not exist")
-					results[table] = []
-					continue
-
-				# 查询表结构
-				structure_cmd = f"sqlite3 '{db_path}' \"PRAGMA table_info('{table}');\""
-				exit_status, out, err = proxy_to_use.execute_command(structure_cmd, timeout=10)
-
-				if exit_status != 0:
-					logger.warning(f"Failed to get structure for table {table}")
-					results[table] = []
-					continue
-
-				# 解析表结构
-				lines = out.strip().split('\n')
-				columns = []
-				for line in lines:
-					if line.strip():
-						parts = line.split('|')
-						if len(parts) >= 2:
-							columns.append(parts[1])  # 列名在第二个位置
-
-				if not columns:
-					logger.warning(f"No columns found for table {table}")
-					results[table] = []
-					continue
-
-				# 查询表数据，以JSON格式返回
-				# 构建JSON对象字段映射
-				json_mappings = []
-				for col in columns:
-					json_mappings.append(f"'{col}', {col}")
-				json_mapping_str = ", ".join(json_mappings)
-				query_cmd = f"sqlite3 '{db_path}' \"SELECT json_group_array(json_object({json_mapping_str})) FROM (SELECT * FROM '{table}');\""
-				exit_status, out, err = proxy_to_use.execute_command(query_cmd, timeout=30)
-
-				if exit_status != 0:
-					logger.warning(f"Failed to query data from table {table}")
-					results[table] = []
-					continue
-
-				# 解析JSON结果
-				import json
-				try:
-					data = json.loads(out.strip())
-					results[table] = data
-				except json.JSONDecodeError as e:
-					logger.warning(f"Failed to parse JSON from table {table}: {e}")
-					# 回退到CSV格式
-					csv_cmd = f"sqlite3 '{db_path}' \".headers on\" \".mode csv\" \"SELECT * FROM '{table}';\""
-					exit_status, csv_out, csv_err = proxy_to_use.execute_command(csv_cmd, timeout=30)
-
-					if exit_status == 0:
-						lines = csv_out.strip().split('\n')
-						if len(lines) > 1:
-							headers = [h.strip('"') for h in lines[0].split(',')]
-							rows = []
-							for line in lines[1:]:
-								if line.strip():
-									values = [v.strip('"') for v in line.split(',')]
-									rows.append(dict(zip(headers, values)))
-							results[table] = rows
-						else:
-							results[table] = []
+				if exit_status == 0:
+					lines = csv_out.strip().split('\n')
+					if len(lines) > 1:
+						headers = [h.strip('"') for h in lines[0].split(',')]
+						rows = []
+						for line in lines[1:]:
+							if line.strip():
+								values = [v.strip('"') for v in line.split(',')]
+								rows.append(dict(zip(headers, values)))
+						results[table] = rows
 					else:
 						results[table] = []
+				else:
+					results[table] = []
 
-			except Exception as e:
-				logger.error(f"Error querying table {table}: {e}")
-				results[table] = []
+		except Exception as e:
+			logger.error(f"Error querying table {table}: {e}")
+			results[table] = []
 
-		return results
-	finally:
-		if should_close and proxy_context:
-			proxy_context.disconnect()
-
+	return results
 
 
 
-def fetch_and_save_tables_csv(hostname, username, key_file, table_names, out_dir=None, proxy=None, **kwargs):
+
+def fetch_and_save_tables_csv(proxy, table_names, out_dir=None, **kwargs):
 	"""Fetch specified tables from remote DB and save each table as CSV in out_dir.
 
 	参数:
-		hostname: 远程服务器地址
-		username: 用户名
-		key_file: SSH密钥文件
+		proxy: NodeProxy对象，用于SSH连接
 		table_names: 要查询的表名列表
 		out_dir: 输出目录，None表示默认目录
-		proxy: 可选的NodeProxy对象，用于共享SSH连接
 		**kwargs: 其他参数
 
 	返回: 写入的文件路径列表
 	"""
-	# 当未指定 out_dir 时，默认保存至 ./csv/<hostname>/ 目录下
-	safe_host = str(hostname).replace(':', '_')
+	# 当未指定 out_dir 时，默认保存至 ./csv/ 目录下
 	if out_dir is None:
-		out_dir = (Path('.') / 'csv' / safe_host).resolve()
+		out_dir = (Path('.') / 'csv').resolve()
 	else:
 		out_dir = Path(out_dir).resolve()
 	# 确保目录存在
 	out_dir.mkdir(parents=True, exist_ok=True)
 
 	# 使用新的直接查询方法获取数据
-	data = fetch_db_data_direct(hostname, username, key_file, table_names=table_names, proxy=proxy, **kwargs)
+	data = fetch_db_data_direct(proxy, table_names=table_names, **kwargs)
 	written = []
 	import csv
 	for table, rows in data.items():
-		fname = out_dir / f"{hostname.replace(':','_')}.{table}.csv"
+		fname = out_dir / f"{table}.csv"
 		if not rows:
 			# create empty file with no rows
 			with open(fname, 'w', newline='', encoding='utf-8') as f:
@@ -374,94 +358,77 @@ def fetch_and_save_tables_csv(hostname, username, key_file, table_names, out_dir
 	return written
 
 
-def get_remote_ports_by_protocol(hostname, port=22, username='root', key_file=None, timeout=10, proxy=None):
+def get_remote_ports_by_protocol(proxy, timeout=10):
 	"""获取远端所有端口，并按协议名作为键，输出的端口列表为值。
 
 	使用 netstat 或 ss 命令获取远端服务器上所有监听的端口，
 	然后按协议类型（TCP/UDP）进行分组。
 
 	参数:
-		hostname: 远端服务器地址
-		port: SSH端口，默认22
-		username: SSH用户名，默认root
-		key_file: SSH密钥文件路径
+		proxy: NodeProxy对象，用于SSH连接
 		timeout: 连接超时时间，默认10秒
-		proxy: 可选的NodeProxy对象，用于共享SSH连接
 
 	返回:
 		dict: 键为协议名（'tcp', 'udp', 'tcp6', 'udp6'），值为对应的端口列表
 	"""
-	logger.info(f"Getting remote ports from {hostname}")
+	logger.info("Getting remote ports")
 
-	# 使用提供的proxy或创建新的
-	if proxy is None:
-		proxy_context = NodeProxy(hostname, port, username, key_file, timeout=timeout)
-		proxy_to_use = proxy_context
-		should_close = True
-	else:
-		proxy_to_use = proxy
-		should_close = False
+	# 先尝试 ss 命令，如果失败则使用 netstat 命令
+	cmd = "ss -tuln"
+	exit_status, output, error = proxy.execute_command(cmd, timeout=timeout)
 
-	try:
-		# 先尝试 ss 命令，如果失败则使用 netstat 命令
-		cmd = "ss -tuln"
-		exit_status, output, error = proxy.execute_command(cmd, timeout=30)
+	# 如果 ss 命令失败，尝试使用 netstat
+	if exit_status != 0:
+		logger.warning("ss command failed, trying netstat...")
+		cmd = "netstat -tuln"
+		exit_status, output, error = proxy.execute_command(cmd, timeout=timeout)
 
-		# 如果 ss 命令失败，尝试使用 netstat
 		if exit_status != 0:
-			logger.warning("ss command failed, trying netstat...")
-			cmd = "netstat -tuln"
-			exit_status, output, error = proxy.execute_command(cmd, timeout=30)
-
-			if exit_status != 0:
-				logger.error(f"Both ss and netstat commands failed: {error}")
-				return {}
+			logger.error(f"Both ss and netstat commands failed: {error}")
+			return {}
 
 	# 解析输出并按协议分组
-		ports_by_protocol = {'tcp': [], 'udp': [], 'tcp6': [], 'udp6': []}
+	ports_by_protocol = {'tcp': [], 'udp': [], 'tcp6': [], 'udp6': []}
 
-		for line in output.strip().split('\n'):
-			line = line.strip()
-			if not line or line.startswith('Netid') or line.startswith('Proto') or line.startswith('Active'):
-				continue
+	for line in output.strip().split('\n'):
+		line = line.strip()
+		if not line or line.startswith('Netid') or line.startswith('Proto') or line.startswith('Active'):
+			continue
 
-			# 解析 ss/netstat 命令输出格式
-			parts = line.split()
-			if len(parts) >= 5:
-				protocol = parts[0].lower()
-				address = parts[4]  # Local Address:Port 在第5列
+		# 解析 ss/netstat 命令输出格式
+		parts = line.split()
+		if len(parts) >= 5:
+			protocol = parts[0].lower()
+			address = parts[4]  # Local Address:Port 在第5列
 
-				# 处理 IPv6 地址格式 [::]:port 或 127.0.0.1:port
-				if ']:' in address:
-					# IPv6 地址格式 [addr]:port
-					port_part = address.split(']:')[-1]
-				elif ':' in address:
-					# IPv4 地址格式 addr:port
-					port_part = address.split(':')[-1]
+			# 处理 IPv6 地址格式 [::]:port 或 127.0.0.1:port
+			if ']:' in address:
+				# IPv6 地址格式 [addr]:port
+				port_part = address.split(']:')[-1]
+			elif ':' in address:
+				# IPv4 地址格式 addr:port
+				port_part = address.split(':')[-1]
+			else:
+				# 只有端口号的情况
+				port_part = address
+
+			# 移除可能的 * 前缀
+			port_part = port_part.lstrip('*')
+
+			if port_part.isdigit():
+				port = int(port_part)
+
+				# 根据地址类型判断协议版本
+				if '[' in address or '::' in address:
+					# IPv6 地址
+					protocol_key = f"{protocol}6"
 				else:
-					# 只有端口号的情况
-					port_part = address
+					# IPv4 地址
+					protocol_key = protocol
 
-				# 移除可能的 * 前缀
-				port_part = port_part.lstrip('*')
+				if protocol_key in ports_by_protocol:
+					if port not in ports_by_protocol[protocol_key]:
+						ports_by_protocol[protocol_key].append(port)
 
-				if port_part.isdigit():
-					port = int(port_part)
-
-					# 根据地址类型判断协议版本
-					if '[' in address or '::' in address:
-						# IPv6 地址
-						protocol_key = f"{protocol}6"
-					else:
-						# IPv4 地址
-						protocol_key = protocol
-
-					if protocol_key in ports_by_protocol:
-						if port not in ports_by_protocol[protocol_key]:
-							ports_by_protocol[protocol_key].append(port)
-
-		# 过滤掉空列表并排序
-		return {k: sorted(v) for k, v in ports_by_protocol.items() if v}
-	finally:
-		if should_close and proxy_context:
-			proxy_context.disconnect()
+	# 过滤掉空列表并排序
+	return {k: sorted(v) for k, v in ports_by_protocol.items() if v}
