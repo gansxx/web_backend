@@ -1,0 +1,48 @@
+{
+  "vultr": {
+    "region": "nrt",
+    "instance_type": "vc2-1c-1gb",
+    "name": "cloud-vultr",
+    "os_id": 2136,
+    "ssh_key_id": ["3f25451c-9da9-4c09-aabc-21ecd54dd647"],
+    "script_id": "e154aeac-0221-45ef-98a3-59ec10c04c3f",
+    "user_data": "QmFzZTY0IEV4YW1wbGUgRGF0YQ==",
+    "backup_enabled": false,
+    "monitoring_enabled": false,
+    "tags": {
+      "Environment": "Development",
+      "Project": "WebBackend"
+    }
+  },
+  "aws_ec2": {
+    "region": "us-east-1",
+    "instance_type": "t3.micro",
+    "name": "cloud-ec2",
+    "os_id": "ami-0c02fb55956c7d316",
+    "ssh_key_id": "my-ec2-keypair",
+    "security_groups": ["sg-12345678"],
+    "subnet_id": "subnet-12345678",
+    "user_data": "#!/bin/bash\necho 'Hello World' > /tmp/hello.txt",
+    "backup_enabled": false,
+    "monitoring_enabled": true,
+    "tags": {
+      "Name": "cloud-ec2",
+      "Environment": "Development",
+      "Project": "WebBackend"
+    }
+  },
+  "aws_lightsail": {
+    "region": "us-east-1",
+    "instance_type": "nano_2_0",
+    "name": "cloud-lightsail",
+    "os_id": "ubuntu_20_04",
+    "ssh_key_id": "my-lightsail-keypair",
+    "user_data": "#!/bin/bash\necho 'Hello World' > /tmp/hello.txt",
+    "backup_enabled": false,
+    "monitoring_enabled": false,
+    "tags": {
+      "Environment": "Development",
+      "Project": "WebBackend"
+    }
+  }
+}

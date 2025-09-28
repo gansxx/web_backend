@@ -1,6 +1,8 @@
 volumes/db/data
 volumes/storage
 .env
+*.csv
+*.log
 test.http
 node_modules/
 .vscode/
