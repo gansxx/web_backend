@@ -201,6 +201,14 @@ try:
 except Exception as _e:
     logger.error(f"注册 routes.free_plan 失败: {_e}")
 
+# 注册 ticket 路由
+try:
+    from routes.ticket import router as ticket_router
+    app.include_router(ticket_router)
+    logger.info("routes.ticket 已注册")
+except Exception as _e:
+    logger.error(f"注册 routes.ticket 失败: {_e}")
+
 class AuthRequest(BaseModel):
     email: EmailStr
     password: str
