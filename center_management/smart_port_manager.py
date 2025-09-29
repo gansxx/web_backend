@@ -183,19 +183,29 @@ def verify_hy2_link_simple(link):
         return False
 
     try:
+        # 获取脚本所在目录作为工作目录
+        script_dir = os.path.dirname(script_path)
+
         # 执行验证脚本
         result = subprocess.run(
             ['bash', script_path, '-z', link],
             capture_output=True,
             text=True,
-            timeout=60
+            timeout=60,
+            cwd=script_dir  # 设置工作目录为脚本所在目录
         )
 
         if result.returncode == 0:
             logger.info("链接验证成功")
+            if result.stdout.strip():
+                logger.debug(f"验证输出: {result.stdout.strip()}")
             return True
         else:
             logger.warning(f"链接验证失败，返回码: {result.returncode}")
+            if result.stderr.strip():
+                logger.warning(f"错误输出: {result.stderr.strip()}")
+            if result.stdout.strip():
+                logger.debug(f"标准输出: {result.stdout.strip()}")
             return False
 
     except subprocess.TimeoutExpired:

@@ -267,6 +267,7 @@ async def purchase_free_plan(
             logger.error(f"插入订单失败: {e}")
             raise HTTPException(500, detail="创建订单失败")
 
+        #付费套餐在这里插入第三方支付组件
         # 4. 更新订单状态为已支付
         try:
             success = order_config.update_order_status(order_id, "已支付")
