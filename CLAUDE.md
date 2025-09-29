@@ -21,9 +21,16 @@ All Supabase services are containerized using Docker Compose:
 - **Storage**: File storage service
 - **Studio**: Management dashboard
 
-### Python Backend
-- **Framework**: FastAPI with Pydantic models
-- **Database**: Supabase client for database operations
+### Python Backend Services
+- **Main API Service**: FastAPI application (port 8001)
+  - Framework: FastAPI with Pydantic models
+  - Database: Supabase client for database operations
+  - Authentication, user management, payments
+- **Orchestrationer Service**: Independent FastAPI service (port 8002)
+  - VPS/infrastructure management and monitoring
+  - IP whitelist security middleware
+  - Bandwidth warnings and status updates
+- **Package Management**: uv for dependency management and virtual environment handling
 - **Testing**: pytest with custom test scripts
 - **Logging**: loguru for structured logging
 
@@ -31,10 +38,8 @@ All Supabase services are containerized using Docker Compose:
 
 ### Development Setup
 ```bash
-# Set up Python environment
-conda create -n "fastapi" python==3.12
-conda activate fastapi
-pip install -r requirements.txt
+# Install dependencies and set up project (uv handles virtual environment automatically)
+uv sync
 
 # Start Supabase services
 docker compose up -d
@@ -42,8 +47,12 @@ docker compose up -d
 # Stop unnecessary containers (optional)
 docker stop supabase-vector realtime-dev.supabase-realtime supabase-storage supabase-edge-functions supabase-imgproxy
 
-# Run backend server
-python run.py  # Runs on port 8001 by default
+# Run main backend server
+uv run python run.py  # Runs on port 8001 by default
+
+# Run orchestrationer service (independent service)
+cd center_management
+uv run python orchestrationer.py    # Runs on port 8002
 ```
 
 ### Database Management
@@ -60,17 +69,26 @@ psql "postgresql://postgres:$POSTGRES_PASSWORD@localhost:5438/postgres" -v ON_ER
 ### Testing
 ```bash
 # Run main test
-python test_main.py
+uv run python test_main.py
+
+# Test specific features
+uv run python test_free_plan_api.py    # Free plan functionality
+uv run python test_ticket.py           # Ticket system
+uv run python test_recall.py           # Password recovery
+uv run python test_h5zhifu.py          # Payment integration
 
 # Run database api tests
-cd center_management/db && python test_go_db.py
+cd center_management/db && uv run python test_go_db.py
 
 # Run all test scripts
 cd center_management/db/test_scripts
-for test in test_*.py; do python "$test"; done
+for test in test_*.py; do uv run python "$test"; done
+
+# Test orchestrationer service
+cd center_management && uv run python test_ip_whitelist.py
 
 # Run pytest
-pytest
+uv run pytest
 ```
 
 ## Key Modules
@@ -80,7 +98,13 @@ pytest
   - `base_config.py`: Base Supabase configuration class
   - `order.py`: Order management with automatic timeout handling
   - `product.py`: Product management functionality
+- **orchestrationer.py**: Independent FastAPI service for infrastructure management
+  - IP whitelist security middleware
+  - VPS monitoring and bandwidth warnings
+  - Status update handling
 - **node_manage.py**: VPS/node management system
+- **vps_vultur_manage.py**: Vultr VPS provider integration
+- **dns.py**: Tencent Cloud DNS management
 - **encode_jwt.py**: JWT token generation utilities
 - **test_api.py**: API testing utilities
 
@@ -132,20 +156,32 @@ DASHBOARD_PASSWORD
    - Follow existing patterns in `center_management/db/`
    - Inherit from `BaseConfig` for database classes
    - Add tests to appropriate test files
-   - Run tests before committing
+   - Run tests before committing: `uv run pytest`
 
 3. **Testing Strategy**:
    - All database functions must have pgtap tests
    - Python modules should have corresponding test scripts
-   - Integration tests in `test_main.py`
+   - Integration tests in `test_main.py`: `uv run python test_main.py`
 
 ## Important Notes
-- run `conda activate fastapi` to activate environment to run any py code
-- make sure the fastapi environment is activate,then you can run `python run.py` to activate the backend api
-- the front-end of the project is in `/root/web_vpn_v0_test`
+
+### Environment Management
+- **Package Management**: Project uses `uv` for dependency management and virtual environment handling
+- **No Manual Environment Activation**: `uv run` automatically manages the virtual environment
+- **Dependency Installation**: Use `uv sync` to install all project dependencies
+- **All Python Commands**: Prefix with `uv run` to ensure proper environment isolation
+
+### Service Architecture
+- **Main API Service**: Port 8001 (authentication, payments, user management)
+- **Orchestrationer Service**: Port 8002 (VPS management, monitoring, IP whitelist)
+- **Frontend**: Located in `/root/web_vpn_v0_test`
+
+### Development Guidelines
 - Never modify production database directly
 - Use separate Supabase projects for each environment
 - All database functions/triggers/indexes/policies must be code-reviewed
 - The system uses automatic order timeout checking via pg_cron
 - Payment processing is handled through h5zhifu integration
 - DNS management uses Tencent Cloud SDK
+- VPS management includes Vultr provider integration
+- Infrastructure monitoring with automatic bandwidth warnings
