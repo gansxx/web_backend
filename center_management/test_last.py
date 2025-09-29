@@ -1,5 +1,5 @@
-from test_api_v2 import test_add_user_v2
-import node_manage as nmanage
+from .test_api_v2 import test_add_user_v2
+from . import node_manage as nmanage
 
 #The main function to use
 if __name__ == "__main__":

@@ -35,7 +35,7 @@ def test_add_user_v2(proxy, name_arg='test_user_2@example.com', url=None, alias=
     返回:
         str: 处理后的hysteria2链接（已包含URL和别名替换），失败返回None
     """
-    from smart_port_manager import add_user_with_smart_port
+    from .smart_port_manager import add_user_with_smart_port
 
     # 记录函数开始时间
     start_time = time.perf_counter()
@@ -141,7 +141,7 @@ def test_smart_port_manager_v2(proxy, name_arg='test_smart_port@example.com'):
     返回:
         bool: 测试是否成功
     """
-    from smart_port_manager import add_user_with_smart_port, get_port_statistics, cleanup_old_port_records
+    from .smart_port_manager import add_user_with_smart_port, get_port_statistics, cleanup_old_port_records
 
     logger.info("=== 智能端口管理器完整功能测试 (v2) ===")
 

@@ -1,5 +1,5 @@
-import node_manage as nmanage
-import vps_vultur_manage as vmanage
+from . import node_manage as nmanage
+from . import vps_vultur_manage as vmanage
 from loguru import logger
 import subprocess
 import os
@@ -9,7 +9,7 @@ import random
 import time
 from pathlib import Path
 from datetime import datetime
-from dns import DNSClient, get_global_dns_client
+from .dns import DNSClient, get_global_dns_client
 
 hostname='45.32.252.106'
 logger.info(f"默认测试服务器地址: {hostname}")
