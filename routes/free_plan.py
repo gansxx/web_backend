@@ -308,13 +308,12 @@ async def purchase_free_plan(
             if subscription_url:
                 logger.info(f"✅ 订阅链接生成成功: {subscription_url}")
             else:
-                logger.warning("❌ 订阅链接生成失败，使用占位符")
-                subscription_url = f"https://example.com/subscription/{purchase_data.plan_id}/{order_id[:8]}"
+                logger.error("❌ 订阅链接生成失败")
+                raise HTTPException(500, detail="订阅链接生成失败")
 
         except Exception as e:
             logger.error(f"生成订阅链接时发生错误: {e}")
-            logger.info("回退到占位符订阅链接")
-            subscription_url = f"https://example.com/subscription/{purchase_data.plan_id}/{order_id[:8]}"
+            raise HTTPException(500, detail=f"生成订阅链接时发生错误: {str(e)}")
 
         logger.info(f"最终订阅链接: {subscription_url}")
 
