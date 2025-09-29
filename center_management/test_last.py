@@ -1,10 +1,13 @@
 from .test_api_v2 import test_add_user_v2
 from . import node_manage as nmanage
+from dotenv import load_dotenv
+import os
 
 #The main function to use
 if __name__ == "__main__":
     # 运行测试
-    hostname='45.32.252.106'
+    hostname=os.getenv('gateway_ip')
+    print(f"测试服务器(网关)地址: {hostname}")
     key_file='id_ed25519'
     proxy = nmanage.NodeProxy(hostname, 22, 'root', key_file)
     try:

@@ -9,8 +9,12 @@ import time
 from pathlib import Path
 from datetime import datetime
 from .dns import dns_status
+from dotenv import load_dotenv
+import os
 
-hostname = '45.32.252.106'
+load_dotenv()
+#获得网关地址（在第一版中为默认单台服务器位置）
+hostname = os.getenv('gateway_ip')
 key_file = 'id_ed25519'
 logger.info(f"默认测试服务器地址: {hostname}")
 logger.info(f"本测试默认使用{key_file}私钥文件，请确保该文件存在可用，且为云端私钥")
