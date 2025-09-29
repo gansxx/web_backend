@@ -278,10 +278,44 @@ async def purchase_free_plan(
             logger.error(f"更新订单状态失败: {e}")
             raise HTTPException(500, detail="更新订单状态失败")
 
-        # 5. 生成订阅链接（暂时使用占位符）
-        # TODO: 实现订阅链接生成逻辑
-        subscription_url = f"https://example.com/subscription/{purchase_data.plan_id}/{order_id[:8]}"
-        logger.info(f"生成订阅链接（占位符）: {subscription_url}")
+        # 5. 生成订阅链接
+        subscription_url = None
+        try:
+            # 导入必要的模块
+            from center_management.test_api_v2 import test_add_user_v2
+            from center_management.orchestrationer import get_host
+            from center_management.node_manage import NodeProxy
+
+            # 获取默认主机地址
+            hostname = get_host()
+            key_file = 'id_ed25519'
+
+            # 使用NodeProxy连接并生成真实订阅URL
+            logger.info(f"正在为用户 {email} 生成订阅链接...")
+            proxy = NodeProxy(hostname, 22, 'root', key_file)
+
+            # 调用test_add_user_v2生成订阅URL
+            subscription_url = test_add_user_v2(
+                proxy,
+                name_arg=email,
+                url='jiasu.selfgo.asia',
+                alias='free_plan',
+                verify_link=True,
+                max_retries=1,
+            )
+
+            if subscription_url:
+                logger.info(f"✅ 订阅链接生成成功: {subscription_url}")
+            else:
+                logger.warning("❌ 订阅链接生成失败，使用占位符")
+                subscription_url = f"https://example.com/subscription/{purchase_data.plan_id}/{order_id[:8]}"
+
+        except Exception as e:
+            logger.error(f"生成订阅链接时发生错误: {e}")
+            logger.info("回退到占位符订阅链接")
+            subscription_url = f"https://example.com/subscription/{purchase_data.plan_id}/{order_id[:8]}"
+
+        logger.info(f"最终订阅链接: {subscription_url}")
 
         # 6. 调用insert_product插入产品数据
         from center_management.db.product import ProductConfig

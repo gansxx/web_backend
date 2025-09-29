@@ -14,6 +14,15 @@ from dns import update_record_ip
 from node_manage import fetch_and_save_tables_csv, NodeProxy
 
 
+def get_host() -> str:
+    """获取默认主机地址
+
+    Returns:
+        str: 默认主机IP地址
+    """
+    return "202.182.106.233"
+
+
 
 # IP 白名单配置
 def get_allowed_ips() -> List[Union[ipaddress.IPv4Address, ipaddress.IPv4Network, ipaddress.IPv6Address, ipaddress.IPv6Network]]:
