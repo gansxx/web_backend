@@ -279,6 +279,7 @@ async def purchase_free_plan(
             raise HTTPException(500, detail="更新订单状态失败")
 
         # 5. 生成订阅链接
+        #目前用户名默认只使用邮件名
         subscription_url = None
         try:
             # 导入必要的模块

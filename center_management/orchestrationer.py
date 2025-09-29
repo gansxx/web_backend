@@ -10,8 +10,8 @@ import logging
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-from dns import update_record_ip
-from node_manage import fetch_and_save_tables_csv, NodeProxy
+from .dns import update_record_ip
+from .node_manage import fetch_and_save_tables_csv, NodeProxy
 
 
 def get_host() -> str:

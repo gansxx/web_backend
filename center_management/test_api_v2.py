@@ -1,4 +1,4 @@
-import node_manage as nmanage
+from . import node_manage as nmanage
 from loguru import logger
 import subprocess
 import os
@@ -8,7 +8,7 @@ import random
 import time
 from pathlib import Path
 from datetime import datetime
-from dns import dns_status
+from .dns import dns_status
 
 hostname = '45.32.252.106'
 key_file = 'id_ed25519'
