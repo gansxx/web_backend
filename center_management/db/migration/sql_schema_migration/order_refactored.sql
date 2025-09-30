@@ -76,6 +76,7 @@ DECLARE
 BEGIN
     EXECUTE format('
         CREATE TABLE IF NOT EXISTS %I.order_timeout_tracker (
+            id uuid not null default gen_random_uuid (),
             order_id uuid not null references %I.order(id) on delete cascade,
             check_at timestamp with time zone not null,
             processed boolean default false,
