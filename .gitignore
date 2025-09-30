@@ -1,7 +1,7 @@
 volumes/db/data
 volumes/storage
 .env
-.env.remote
+.env.migration
 *.csv
 *.log
 test.http
