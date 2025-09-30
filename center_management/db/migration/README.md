@@ -8,6 +8,7 @@
 center_management/db/migration/
 ├── pg_dump_remote.py      # 主脚本
 ├── remote_db_config.py    # 数据库配置管理
+├── ssh_tunnel.py          # SSH隧道管理器
 ├── backups/              # 备份文件目录
 ├── README.md             # 使用说明
 └── examples.sh           # 使用示例脚本
@@ -19,6 +20,7 @@ center_management/db/migration/
    - `psycopg2-binary>=2.9.7`
    - `loguru`
    - `python-dotenv`
+   - `paramiko` (SSH隧道功能)
 
 2. **系统工具**: PostgreSQL 客户端工具
    - Ubuntu/Debian: `sudo apt-get install postgresql-client`
@@ -79,9 +81,25 @@ center_management/db/migration/
 4. `.env.migration.example` (仅作参考)
 
 #### 连接方式说明
-- **远程**: 通过 `gateway_ip:5438` → 远程数据库容器
-- **本地**: 通过 `localhost:5438` → 本地 Docker 容器
-- **端口映射**: 5438 (外部) → 5432 (PostgreSQL 内部)
+
+**支持两种连接模式**:
+
+1. **直接连接模式** (`USE_SSH_TUNNEL=false` 或未配置):
+   - 通过 `remote_db_ip:REMOTE_POSTGRES_PORT` 直接连接远程数据库
+   - 要求远程数据库端口对外开放
+   - 配置简单，适合内网环境或已配置端口转发的场景
+
+2. **SSH隧道模式** (`USE_SSH_TUNNEL=true`):
+   - 本地脚本 → `localhost:LOCAL_remote_POSTGRES_PORT` (默认5439)
+   - SSH隧道通过 `SSH_GATEWAY_HOST` 建立端口转发
+   - 转发到远程数据库 `REMOTE_POSTGRES_HOST:REMOTE_POSTGRES_PORT`
+   - 更安全，无需直接暴露数据库端口
+   - 适合生产环境或需要通过跳板机访问的场景
+
+**端口配置**:
+- `REMOTE_POSTGRES_PORT` (5438): 远程数据库监听端口
+- `LOCAL_remote_POSTGRES_PORT` (5439): 本地SSH隧道转发端口
+- 本地数据库: `localhost:5438` → 本地 Docker 容器
 
 ## 使用方法
 
@@ -136,6 +154,16 @@ uv run python center_management/db/migration/pg_dump_remote.py --import --file b
 uv run python center_management/db/migration/pg_dump_remote.py --sync --source remote --target local
 ```
 
+**使用SSH隧道同步（强制启用）**
+```bash
+uv run python center_management/db/migration/pg_dump_remote.py --sync --source remote --target local --use-tunnel
+```
+
+**不使用SSH隧道同步（强制禁用）**
+```bash
+uv run python center_management/db/migration/pg_dump_remote.py --sync --source remote --target local --no-tunnel
+```
+
 **同步指定表**
 ```bash
 uv run python center_management/db/migration/pg_dump_remote.py --sync --source remote --target local --tables "orders,products"
@@ -184,12 +212,77 @@ uv run python center_management/db/migration/pg_dump_remote.py --sync --source r
 uv run python center_management/db/migration/pg_dump_remote.py --export --source remote --schema-only
 ```
 
+## SSH隧道模式详细说明
+
+### 启用SSH隧道
+
+在 `.env.migration` 文件中配置:
+
+```bash
+# 启用SSH隧道
+USE_SSH_TUNNEL=true
+
+# SSH网关配置
+SSH_GATEWAY_HOST=8.134.74.41
+SSH_GATEWAY_PORT=22
+SSH_GATEWAY_USER=root
+SSH_KEY_FILE=./center_management/id_ed25519
+
+# 远程数据库配置
+REMOTE_POSTGRES_HOST=db
+REMOTE_POSTGRES_PORT=5438
+LOCAL_remote_POSTGRES_PORT=5439
+```
+
+### SSH密钥配置
+
+1. **确保SSH密钥存在**:
+   ```bash
+   ls -la ./center_management/id_ed25519
+   ```
+
+2. **设置正确权限**:
+   ```bash
+   chmod 600 ./center_management/id_ed25519
+   ```
+
+3. **测试SSH连接**:
+   ```bash
+   ssh -i ./center_management/id_ed25519 root@8.134.74.41
+   ```
+
+### 工作原理
+
+```
+┌─────────────┐                    ┌──────────────┐                 ┌──────────────┐
+│  本地脚本    │ ─────────────────> │  SSH网关      │ ──────────────> │ 远程数据库    │
+│             │  SSH Tunnel        │  (跳板机)     │  内网连接        │  (PostgreSQL) │
+└─────────────┘                    └──────────────┘                 └──────────────┘
+   localhost:5439                   8.134.74.41:22                    db:5438
+```
+
+### 优势
+
+1. **安全性**: 数据库端口无需对外开放，只需开放SSH端口
+2. **灵活性**: 支持通过跳板机访问内网数据库
+3. **加密传输**: 所有数据通过SSH加密传输
+4. **审计追踪**: SSH登录可记录审计日志
+
 ## 安全注意事项
 
 1. **密码保护**: 密码通过环境变量传递，不会在命令行显示
-2. **网络安全**: 远程连接通过指定的网关 IP 进行
-3. **备份管理**: 定期清理旧备份文件以节省磁盘空间
-4. **权限控制**: 确保只有授权用户可以访问生产数据库
+2. **SSH密钥安全**:
+   - 私钥文件权限设置为 600
+   - 不要将私钥提交到版本控制系统
+   - 定期轮换SSH密钥
+3. **网络安全**:
+   - 推荐使用SSH隧道模式
+   - 仅在必要时开放数据库端口
+4. **备份管理**: 定期清理旧备份文件以节省磁盘空间
+5. **权限控制**: 确保只有授权用户可以访问生产数据库
+6. **配置文件安全**:
+   - `.env.migration` 文件权限设置为 600
+   - 添加到 `.gitignore` 防止泄露
 
 ## 故障排除
 
@@ -205,6 +298,13 @@ uv run python center_management/db/migration/pg_dump_remote.py --export --source
 ### 权限问题
 - 确保数据库用户有足够的权限
 - 检查防火墙和安全组设置
+
+### SSH隧道问题
+- **连接失败**: 检查 SSH_GATEWAY_HOST 和 SSH_GATEWAY_PORT
+- **认证失败**: 验证 SSH_KEY_FILE 路径和权限 (chmod 600)
+- **端口转发失败**: 确认SSH网关允许端口转发 (AllowTcpForwarding yes)
+- **端口已占用**: 更改 LOCAL_remote_POSTGRES_PORT 到其他端口
+- **测试SSH**: `ssh -i SSH_KEY_FILE SSH_GATEWAY_USER@SSH_GATEWAY_HOST`
 
 ## 日志和调试
 
@@ -226,5 +326,7 @@ uv run python center_management/db/migration/pg_dump_remote.py --export --source
 | `--schema-only` | 只导出结构 | |
 | `--data-only` | 只导出数据 | |
 | `--clean` | 清理目标数据库 | |
+| `--use-tunnel` | 强制使用SSH隧道 | |
+| `--no-tunnel` | 强制不使用SSH隧道 | |
 | `--list` | 列出备份文件 | |
 | `--cleanup` | 清理旧备份 | `--cleanup --keep 10` |

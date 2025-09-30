@@ -1,14 +1,32 @@
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response, Cookie
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from loguru import logger
-import os
-import json
-import uuid
-from datetime import datetime
-from typing import Literal
+from typing import Literal, Optional
 
 router = APIRouter(tags=["support"])
+
+
+# 优先级映射：前端 → 数据库
+PRIORITY_MAP = {
+    "low": "低",
+    "normal": "中",
+    "high": "高",
+    "urgent": "高"  # urgent 也映射为高
+}
+
+# 优先级映射：数据库 → 前端
+PRIORITY_MAP_REVERSE = {
+    "低": "low",
+    "中": "normal",
+    "高": "high"
+}
+
+# 状态映射：数据库 → 前端
+STATUS_MAP = {
+    "处理中": "open",
+    "已解决": "resolved"
+}
 
 
 class TicketRequest(BaseModel):
@@ -24,104 +42,198 @@ class TicketResponse(BaseModel):
     message: str
 
 
-def _ensure_tickets_directory():
-    """确保tickets目录存在"""
-    tickets_dir = "tickets"
-    if not os.path.exists(tickets_dir):
-        os.makedirs(tickets_dir)
-        logger.info(f"创建工单存储目录: {tickets_dir}")
-    return tickets_dir
+def _get_user_email_from_token(
+    request: Request,
+    response: Response,
+    access_token: Optional[str] = None,
+    refresh_token: Optional[str] = None
+) -> str:
+    """
+    从 Cookie 或 token 中获取用户邮箱
+    处理 token 过期自动刷新逻辑
+    """
+    supabase = getattr(request.app.state, "supabase", None)
+    do_refresh = getattr(request.app.state, "refresh_session_and_set_cookies", None)
 
+    if not supabase:
+        raise HTTPException(500, detail="Supabase 未初始化")
 
-def _generate_ticket_id() -> str:
-    """生成唯一的工单ID"""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    unique_id = str(uuid.uuid4())[:8]
-    return f"TK_{timestamp}_{unique_id}"
-
-
-def _save_ticket_to_file(ticket_data: dict, ticket_id: str) -> str:
-    """保存工单到本地文件"""
-    tickets_dir = _ensure_tickets_directory()
-    filename = f"ticket_{ticket_id}.json"
-    filepath = os.path.join(tickets_dir, filename)
+    token_to_use = access_token
+    if not token_to_use:
+        raise HTTPException(401, detail="未登录，请先登录")
 
     try:
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(ticket_data, f, ensure_ascii=False, indent=2)
-        logger.info(f"工单已保存到文件: {filepath}")
-        return filepath
+        try:
+            _res = supabase.auth.get_user(token_to_use)
+        except Exception as e:
+            msg = str(e).lower()
+            # 如果 token 过期且有 refresh_token，尝试刷新
+            if refresh_token and ("expired" in msg or "invalid" in msg) and callable(do_refresh):
+                logger.info("access_token 失效，尝试 refresh_token 刷新")
+                new_at = do_refresh(response, refresh_token)
+                if not new_at:
+                    raise HTTPException(401, detail="登录已过期，请重新登录")
+                _res = supabase.auth.get_user(new_at)
+            else:
+                raise
+
+        user = getattr(_res, "user", None)
+        if not user or not getattr(user, "email", None):
+            raise HTTPException(401, detail="未登录或用户无邮箱信息")
+
+        email = user.email
+        if not isinstance(email, str) or not email:
+            raise HTTPException(401, detail="用户邮箱信息无效")
+
+        return email
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"保存工单文件失败: {e}")
-        raise HTTPException(status_code=500, detail="保存工单失败")
+        logger.error(f"获取用户信息失败: {e}")
+        raise HTTPException(401, detail="身份验证失败")
 
 
-@router.post("/support/tickets", response_model=TicketResponse)
-async def create_ticket(request: Request, ticket_request: TicketRequest):
+@router.post("/support/submit_ticket", response_model=TicketResponse)
+async def submit_ticket(
+    request: Request,
+    response: Response,
+    ticket_request: TicketRequest,
+    access_token: Optional[str] = Cookie(default=None),
+    refresh_token: Optional[str] = Cookie(default=None)
+):
     """
     创建新的支持工单
 
-    接收前端发送的工单信息，验证后保存到本地文件
-    后期将集成数据库存储功能
+    前端调用: POST /support/submit_ticket
+    需要用户登录（通过 Cookie 验证）
     """
-    try:
-        # 生成工单ID
-        ticket_id = _generate_ticket_id()
+    ticket_db = getattr(request.app.state, "ticket_db", None)
+    if not ticket_db:
+        raise HTTPException(500, detail="工单系统未初始化")
 
-        # 准备工单数据
-        ticket_data = {
-            "ticket_id": ticket_id,
-            "subject": ticket_request.subject,
-            "priority": ticket_request.priority,
-            "category": ticket_request.category,
-            "description": ticket_request.description,
-            "status": "new",
-            "created_at": datetime.now().isoformat(),
-            "metadata": {
-                "user_agent": request.headers.get("user-agent"),
-                "ip_address": request.client.host if request.client else "unknown",
-                "source": "web_frontend"
-            }
+    try:
+        # 获取用户邮箱（包含自动 token 刷新）
+        user_email = _get_user_email_from_token(request, response, access_token, refresh_token)
+
+        # 转换优先级
+        db_priority = PRIORITY_MAP.get(ticket_request.priority, "中")
+
+        # 准备元数据
+        metadata = {
+            "user_agent": request.headers.get("user-agent"),
+            "ip_address": request.client.host if request.client else "unknown",
+            "source": "web_frontend"
         }
 
-        # 保存到本地文件
-        filepath = _save_ticket_to_file(ticket_data, ticket_id)
+        # 插入工单到数据库
+        ticket_id = ticket_db.insert_ticket(
+            user_email=user_email,
+            subject=ticket_request.subject,
+            priority=db_priority,
+            category=ticket_request.category,
+            description=ticket_request.description,
+            metadata=metadata
+        )
 
-        logger.info(f"新工单创建成功: {ticket_id}")
+        logger.info(f"新工单创建成功: {ticket_id}, 用户: {user_email}")
 
         return TicketResponse(
             success=True,
-            ticket_id=ticket_id,
+            ticket_id=str(ticket_id),
             message=f"工单创建成功，工单号: {ticket_id}"
         )
 
     except HTTPException:
-        # 重新抛出已知的HTTP异常
         raise
     except Exception as e:
-        logger.error(f"创建工单时发生未知错误: {e}")
+        logger.error(f"创建工单时发生错误: {e}")
         raise HTTPException(
             status_code=500,
-            detail="创建工单时发生内部错误，请稍后重试"
+            detail="创建工单失败，请稍后重试"
         )
 
 
-@router.get("/support/tickets/{ticket_id}")
-async def get_ticket(ticket_id: str):
+@router.get("/support/tickets")
+async def get_user_tickets(
+    request: Request,
+    response: Response,
+    access_token: Optional[str] = Cookie(default=None),
+    refresh_token: Optional[str] = Cookie(default=None)
+):
     """
-    根据工单ID获取工单信息（可选功能）
-    """
-    tickets_dir = "tickets"
-    filename = f"ticket_{ticket_id}.json"
-    filepath = os.path.join(tickets_dir, filename)
+    获取当前用户的所有工单
 
-    if not os.path.exists(filepath):
-        raise HTTPException(status_code=404, detail="工单不存在")
+    前端调用: GET /support/tickets
+    需要用户登录（通过 Cookie 验证）
+    返回格式: [{id, subject, priority, category, status, created_at}, ...]
+    """
+    ticket_db = getattr(request.app.state, "ticket_db", None)
+    if not ticket_db:
+        raise HTTPException(500, detail="工单系统未初始化")
 
     try:
-        with open(filepath, 'r', encoding='utf-8') as f:
-            ticket_data = json.load(f)
-        return JSONResponse(content=ticket_data)
+        # 获取用户邮箱（包含自动 token 刷新）
+        user_email = _get_user_email_from_token(request, response, access_token, refresh_token)
+
+        # 查询用户工单
+        tickets = ticket_db.fetch_user_tickets(user_email=user_email)
+
+        # 转换为前端格式
+        result = []
+        for ticket in tickets:
+            result.append({
+                "id": str(ticket.get("id", "")),
+                "subject": ticket.get("subject", ""),
+                "priority": PRIORITY_MAP_REVERSE.get(ticket.get("priority", "中"), "normal"),
+                "category": ticket.get("category", ""),
+                "status": STATUS_MAP.get(ticket.get("status", "处理中"), "open"),
+                "created_at": ticket.get("created_at", "")
+            })
+
+        logger.info(f"查询用户工单成功: {user_email}, 数量: {len(result)}")
+        return result
+
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"读取工单文件失败: {e}")
-        raise HTTPException(status_code=500, detail="读取工单信息失败")
+        logger.error(f"获取工单列表失败: {e}")
+        raise HTTPException(500, detail="获取工单列表失败")
+
+
+@router.get("/support/tickets/{ticket_id}")
+async def get_ticket_detail(
+    ticket_id: str,
+    request: Request,
+    response: Response,
+    access_token: Optional[str] = Cookie(default=None),
+    refresh_token: Optional[str] = Cookie(default=None)
+):
+    """
+    获取工单详细信息
+
+    需要用户登录，且只能查看自己的工单
+    """
+    ticket_db = getattr(request.app.state, "ticket_db", None)
+    if not ticket_db:
+        raise HTTPException(500, detail="工单系统未初始化")
+
+    try:
+        # 获取用户邮箱
+        user_email = _get_user_email_from_token(request, response, access_token, refresh_token)
+
+        # 查询工单
+        ticket = ticket_db.get_ticket_by_id(ticket_id)
+        if not ticket:
+            raise HTTPException(404, detail="工单不存在")
+
+        # 验证工单所有权
+        if ticket.get("user_email") != user_email:
+            raise HTTPException(403, detail="无权访问此工单")
+
+        return ticket
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取工单详情失败: {e}")
+        raise HTTPException(500, detail="获取工单详情失败")

@@ -1,6 +1,6 @@
 -- 订单管理脚本 - 原子性执行
 -- 使用方法: psql -v ON_ERROR_STOP=1 -1 -f order_refactored.sql
--- Schema 控制: 修改第15行的 'test2' 值即可控制整个脚本
+-- Schema 控制: 修改第15行的 'test' 值即可控制整个脚本
 
 -- 1. 创建或更新 schema 名称配置表
 CREATE TABLE IF NOT EXISTS schema_config (
@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS schema_config (
 -- 3. 插入或更新当前 schema 配置
 DO $$
 DECLARE
-    app_schema TEXT := 'test2';
+    app_schema TEXT := 'test';
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = app_schema) THEN
         EXECUTE format('CREATE SCHEMA %I', app_schema);

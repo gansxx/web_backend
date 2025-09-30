@@ -115,7 +115,7 @@ uv run pytest
 ### Payments (`payments/`)
 - `h5zhifu.py`: H5 payment integration
 
-### Database Migrations (`supabase/migrations/`)
+### Database Migrations (`center_management/db/migration/sql_schema_migration`)
 All database changes must be managed through migration files in this directory.
 
 ## Database Features
