@@ -68,27 +68,26 @@ psql "postgresql://postgres:$POSTGRES_PASSWORD@localhost:5438/postgres" -v ON_ER
 
 ### Testing
 ```bash
-# Run main test
+# Run pytest (recommended)
+uv run pytest
+
+# Run main integration test (starts full API server)
 uv run python test_main.py
 
-# Test specific features
+# Test specific API features (integration tests)
 uv run python test_free_plan_api.py    # Free plan functionality
 uv run python test_ticket.py           # Ticket system
 uv run python test_recall.py           # Password recovery
 uv run python test_h5zhifu.py          # Payment integration
 
-# Run database api tests
+# Test database layer
 cd center_management/db && uv run python test_go_db.py
 
-# Run all test scripts
-cd center_management/db/test_scripts
-for test in test_*.py; do uv run python "$test"; done
+# Test database order timeout system
+cd center_management/db/test_scripts && uv run python test_order_timeout.py
 
 # Test orchestrationer service
 cd center_management && uv run python test_ip_whitelist.py
-
-# Run pytest
-uv run pytest
 ```
 
 ## Key Modules
@@ -147,21 +146,23 @@ DASHBOARD_PASSWORD
 
 1. **Database Changes**:
    - Implement and test SQL locally in dev database
-   - Generate migration: `supabase db diff -f "<description>"`
-   - Write pgtap tests in `supabase/tests/db/`
-   - Run all tests after reset: `supabase db reset`
-   - Push to environment: `supabase link && supabase db push`
+   - Place migration SQL files in `center_management/db/migration/sql_schema_migration/`
+   - Test migrations by running them with psql (see Database Management commands)
+   - Verify changes with database tests
 
 2. **Python Code Changes**:
    - Follow existing patterns in `center_management/db/`
-   - Inherit from `BaseConfig` for database classes
+   - Inherit from `BaseConfig` for database classes (provides Supabase client)
    - Add tests to appropriate test files
    - Run tests before committing: `uv run pytest`
 
-3. **Testing Strategy**:
-   - All database functions must have pgtap tests
-   - Python modules should have corresponding test scripts
-   - Integration tests in `test_main.py`: `uv run python test_main.py`
+3. **API Endpoint Changes**:
+   - Main API routes go in `routes/` directory
+   - Orchestrationer endpoints go in `center_management/orchestrationer.py`
+   - Use Pydantic models for request/response validation
+   - Test with integration tests in root directory
+
+
 
 ## Important Notes
 
@@ -172,9 +173,17 @@ DASHBOARD_PASSWORD
 - **All Python Commands**: Prefix with `uv run` to ensure proper environment isolation
 
 ### Service Architecture
-- **Main API Service**: Port 8001 (authentication, payments, user management)
-- **Orchestrationer Service**: Port 8002 (VPS management, monitoring, IP whitelist)
+- **Main API Service** (`test_main.py` via `run.py`): Port 8001
+  - Authentication, user management, payments
+  - Routes in `routes/` directory (auth, user_data, ticket, free_plan)
+  - Uses ANON_KEY for client authentication
+- **Orchestrationer Service** (`center_management/orchestrationer.py`): Port 8002
+  - Independent FastAPI service for infrastructure management
+  - VPS monitoring, bandwidth warnings, status updates
+  - IP whitelist security middleware
+  - Uses SERVICE_ROLE_KEY for direct database access
 - **Frontend**: Located in `/root/web_vpn_v0_test`
+- **Database**: PostgreSQL via Supabase (localhost:5438)
 
 ### Development Guidelines
 - Never modify production database directly

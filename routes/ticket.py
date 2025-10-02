@@ -1,37 +1,41 @@
-from fastapi import APIRouter, HTTPException, Request, Response, Cookie
+from fastapi import APIRouter, HTTPException, Request, Response, Cookie, Query
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr
 from loguru import logger
 from typing import Literal, Optional
+import os
 
 router = APIRouter(tags=["support"])
 
+# Load admin emails from environment variable
+ADMIN_EMAILS = set(email.strip() for email in os.getenv('ADMIN_EMAILS', '').split(',') if email.strip())
 
-# 优先级映射：前端 → 数据库
-PRIORITY_MAP = {
-    "low": "低",
-    "normal": "中",
-    "high": "高",
-    "urgent": "高"  # urgent 也映射为高
-}
+
+# # 优先级映射：前端 → 数据库
+# PRIORITY_MAP = {
+#     "low": "低",
+#     "normal": "中",
+#     "high": "高",
+#     "urgent": "高"  # urgent 也映射为高
+# }
 
 # 优先级映射：数据库 → 前端
-PRIORITY_MAP_REVERSE = {
-    "低": "low",
-    "中": "normal",
-    "高": "high"
-}
+# PRIORITY_MAP_REVERSE = {
+#     "低": "low",
+#     "中": "normal",
+#     "高": "high"
+# }
 
-# 状态映射：数据库 → 前端
-STATUS_MAP = {
-    "处理中": "open",
-    "已解决": "resolved"
-}
+# # 状态映射：数据库 → 前端
+# STATUS_MAP = {
+#     "处理中": "open",
+#     "已解决": "resolved"
+# }
 
 
 class TicketRequest(BaseModel):
     subject: str = Field(..., min_length=1, max_length=200, description="工单标题")
-    priority: Literal["low", "normal", "high", "urgent"] = Field(..., description="工单优先级")
+    priority: Literal["低", "中", "高"] = Field(..., description="工单优先级")
     category: str = Field(..., min_length=1, max_length=100, description="工单类别")
     description: str = Field(..., min_length=1, max_length=2000, description="工单描述")
 
@@ -40,6 +44,13 @@ class TicketResponse(BaseModel):
     success: bool
     ticket_id: str
     message: str
+
+
+class TicketReplyRequest(BaseModel):
+    status: Literal["处理中", "已解决"] = Field(..., description="工单状态")
+    reply: str = Field(..., min_length=1, max_length=5000, description="管理员答复内容")
+    send_email: bool = Field(default=True, description="是否发送邮件通知用户")
+    admin_email: EmailStr = Field(..., description="管理员邮箱")
 
 
 def _get_user_email_from_token(
@@ -116,7 +127,7 @@ async def submit_ticket(
         user_email = _get_user_email_from_token(request, response, access_token, refresh_token)
 
         # 转换优先级
-        db_priority = PRIORITY_MAP.get(ticket_request.priority, "中")
+        # db_priority = PRIORITY_MAP.get(ticket_request.priority, "中")
 
         # 准备元数据
         metadata = {
@@ -129,11 +140,12 @@ async def submit_ticket(
         ticket_id = ticket_db.insert_ticket(
             user_email=user_email,
             subject=ticket_request.subject,
-            priority=db_priority,
+            priority=ticket_request.priority,
             category=ticket_request.category,
             description=ticket_request.description,
             metadata=metadata
         )
+        logger.debug(f"插入工单为: {ticket_request}")
 
         logger.info(f"新工单创建成功: {ticket_id}, 用户: {user_email}")
 
@@ -180,14 +192,17 @@ async def get_user_tickets(
 
         # 转换为前端格式
         result = []
+        # logger.debug(f"查询到的工单数据: {tickets}")
         for ticket in tickets:
             result.append({
                 "id": str(ticket.get("id", "")),
                 "subject": ticket.get("subject", ""),
-                "priority": PRIORITY_MAP_REVERSE.get(ticket.get("priority", "中"), "normal"),
+                "priority": ticket.get("priority", "中"),
                 "category": ticket.get("category", ""),
-                "status": STATUS_MAP.get(ticket.get("status", "处理中"), "open"),
-                "created_at": ticket.get("created_at", "")
+                "status": ticket.get("status", "处理中"),
+                "created_at": ticket.get("created_at", ""),
+                "reply": ticket.get("reply"),
+                "replied_at": ticket.get("replied_at")
             })
 
         logger.info(f"查询用户工单成功: {user_email}, 数量: {len(result)}")
@@ -237,3 +252,116 @@ async def get_ticket_detail(
     except Exception as e:
         logger.error(f"获取工单详情失败: {e}")
         raise HTTPException(500, detail="获取工单详情失败")
+
+
+@router.get("/support/admin/tickets")
+async def get_all_tickets_admin(
+    request: Request,
+    admin_email: EmailStr = Query(..., description="管理员邮箱"),
+    status: Optional[str] = Query(None, description="筛选状态"),
+    priority: Optional[str] = Query(None, description="筛选优先级"),
+    limit: int = Query(100, ge=1, le=500, description="返回数量限制"),
+    offset: int = Query(0, ge=0, description="偏移量")
+):
+    """
+    获取所有工单（管理员功能）
+
+    需要admin_email参数进行管理员身份验证
+    支持按状态、优先级筛选，以及分页
+    """
+    ticket_db = getattr(request.app.state, "ticket_db", None)
+    if not ticket_db:
+        raise HTTPException(500, detail="工单系统未初始化")
+
+    try:
+        # 验证管理员邮箱
+        if admin_email not in ADMIN_EMAILS:
+            logger.warning(f"非管理员邮箱尝试访问所有工单: {admin_email}")
+            raise HTTPException(403, detail="无管理员权限")
+
+        # 查询所有工单
+        tickets = ticket_db.fetch_all_tickets(
+            status=status,
+            priority=priority,
+            limit=limit,
+            offset=offset
+        )
+
+        logger.info(f"管理员 {admin_email} 查询所有工单: 数量={len(tickets)}, status={status}, priority={priority}")
+        return tickets
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取所有工单失败: {e}")
+        raise HTTPException(500, detail="获取所有工单失败")
+
+
+@router.patch("/support/tickets/{ticket_id}/reply")
+async def reply_to_ticket(
+    ticket_id: str,
+    reply_request: TicketReplyRequest,
+    request: Request
+):
+    """
+    管理员答复工单（需要管理员权限）
+
+    前端调用: PATCH /support/tickets/{ticket_id}/reply
+    Body参数中需包含admin_email字段进行管理员身份验证
+    """
+    ticket_db = getattr(request.app.state, "ticket_db", None)
+    if not ticket_db:
+        raise HTTPException(500, detail="工单系统未初始化")
+
+    try:
+        # 验证管理员邮箱是否在白名单中
+        if reply_request.admin_email not in ADMIN_EMAILS:
+            logger.warning(f"非管理员邮箱尝试答复工单: {reply_request.admin_email}")
+            raise HTTPException(403, detail="无管理员权限")
+
+        logger.info(f"管理员 {reply_request.admin_email} 正在答复工单: {ticket_id}")
+
+        # 先获取工单详情（用于发送邮件）
+        ticket = ticket_db.get_ticket_by_id(ticket_id)
+        if not ticket:
+            raise HTTPException(404, detail="工单不存在")
+
+        # 更新工单状态和答复
+        success = ticket_db.update_ticket_status(
+            ticket_id=ticket_id,
+            status=reply_request.status,
+            reply=reply_request.reply
+        )
+
+        if not success:
+            raise HTTPException(500, detail="更新工单失败")
+
+        # 发送邮件通知用户
+        email_sent = False
+        if reply_request.send_email:
+            try:
+                email_sent = ticket_db.send_ticket_reply_email(
+                    user_email=ticket.get("user_email"),
+                    ticket_subject=ticket.get("subject"),
+                    reply_content=reply_request.reply,
+                    ticket_id=ticket_id
+                )
+                if email_sent:
+                    logger.info(f"工单答复邮件已发送到: {ticket.get('user_email')}")
+                else:
+                    logger.warning(f"工单答复邮件发送失败: {ticket.get('user_email')}")
+            except Exception as e:
+                logger.error(f"发送邮件时出错: {e}")
+
+        return {
+            "success": True,
+            "message": "工单答复成功",
+            "ticket_id": ticket_id,
+            "email_sent": email_sent
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"答复工单失败: {e}")
+        raise HTTPException(500, detail="答复工单失败")

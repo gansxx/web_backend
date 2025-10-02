@@ -179,11 +179,13 @@ async def otp_send(req: EmailRequest, request: Request):
     supabase = _require_supabase(request)
     ok, reason = await _verify_turnstile(request)
     if not ok:
+        logger.info("人机验证失败，拒绝发送 OTP")
         return JSONResponse(status_code=400, content={"error": "人机验证失败", "detail": reason})
     try:
         supabase.auth.sign_in_with_otp({"email": req.email, "should_create_user": True})
         return {"ok": True}
     except Exception as e:
+        logger.error(f"发送 OTP 失败: {str(e)}")
         return JSONResponse(status_code=400, content={"error": "发送失败", "detail": str(e)})
 
 

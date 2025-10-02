@@ -63,7 +63,7 @@ def test_create_ticket(cookies):
 
     ticket_data = {
         "subject": "测试工单 - API测试",
-        "priority": "high",
+        "priority": "高",
         "category": "技术支持",
         "description": "这是一个通过 API 测试创建的工单，测试用户认证和数据库集成。"
     }
@@ -98,19 +98,19 @@ def test_create_multiple_tickets(cookies):
     tickets = [
         {
             "subject": "登录问题",
-            "priority": "urgent",
+            "priority": "高",
             "category": "账号问题",
             "description": "无法登录账号"
         },
         {
             "subject": "功能咨询",
-            "priority": "normal",
+            "priority": "中",
             "category": "一般咨询",
             "description": "如何使用某个功能"
         },
         {
             "subject": "付费问题",
-            "priority": "high",
+            "priority": "高",
             "category": "支付问题",
             "description": "支付失败"
         }
@@ -194,9 +194,76 @@ def test_get_ticket_detail(cookies, ticket_id):
         return None
 
 
+def test_reply_to_ticket(cookies, ticket_id):
+    """测试管理员答复工单"""
+    logger.info(f"\n=== 步骤 6: 测试答复工单 ===")
+
+    reply_data = {
+        "status": "已解决",
+        "reply": "感谢您的反馈！我们已经解决了您提到的问题。如果还有其他疑问，欢迎随时联系我们。",
+        "send_email": False  # 测试环境可能没有配置 SMTP，设为 False
+    }
+
+    try:
+        resp = requests.patch(
+            f"{API_BASE}/support/tickets/{ticket_id}/reply",
+            json=reply_data,
+            cookies=cookies,
+            timeout=10
+        )
+
+        if resp.status_code == 200:
+            result = resp.json()
+            logger.info(f"✅ 工单答复成功:")
+            logger.info(f"  ticket_id: {result.get('ticket_id')}")
+            logger.info(f"  message: {result.get('message')}")
+            logger.info(f"  email_sent: {result.get('email_sent')}")
+            return True
+        else:
+            logger.error(f"❌ 答复工单失败: {resp.status_code}")
+            logger.error(f"响应: {resp.text}")
+            return False
+    except Exception as e:
+        logger.error(f"❌ 请求异常: {e}")
+        return False
+
+
+def test_check_reply(cookies, ticket_id):
+    """测试查询工单答复"""
+    logger.info(f"\n=== 步骤 7: 查看答复后的工单详情 ===")
+
+    try:
+        resp = requests.get(
+            f"{API_BASE}/support/tickets/{ticket_id}",
+            cookies=cookies,
+            timeout=10
+        )
+
+        if resp.status_code == 200:
+            ticket = resp.json()
+            logger.info(f"✅ 工单详情:")
+            logger.info(f"  标题: {ticket.get('subject')}")
+            logger.info(f"  状态: {ticket.get('status')}")
+            logger.info(f"  答复内容: {ticket.get('reply')}")
+            logger.info(f"  答复时间: {ticket.get('replied_at')}")
+
+            # 验证答复字段是否存在
+            if ticket.get('reply'):
+                logger.info("✅ 答复字段已正确返回")
+            else:
+                logger.warning("⚠️ 答复字段为空")
+            return ticket
+        else:
+            logger.error(f"❌ 获取工单详情失败: {resp.status_code}")
+            return None
+    except Exception as e:
+        logger.error(f"❌ 请求异常: {e}")
+        return None
+
+
 def test_unauthorized_access():
     """测试未登录访问（应该失败）"""
-    logger.info("\n=== 步骤 6: 测试未登录访问 ===")
+    logger.info("\n=== 步骤 8: 测试未登录访问 ===")
 
     try:
         resp = requests.get(f"{API_BASE}/support/tickets", timeout=10)
@@ -232,17 +299,28 @@ def run_all_tests():
     tickets = test_get_user_tickets(cookies)
 
     # 5. 获取工单详情（如果有工单）
+    test_ticket_id = None
     if tickets and len(tickets) > 0:
         first_ticket_id = tickets[0].get('id')
         test_get_ticket_detail(cookies, first_ticket_id)
+        test_ticket_id = first_ticket_id
     elif ticket_id:
         test_get_ticket_detail(cookies, ticket_id)
+        test_ticket_id = ticket_id
 
-    # 6. 测试未授权访问
+    # 6. 测试答复工单（新功能）
+    if test_ticket_id:
+        if test_reply_to_ticket(cookies, test_ticket_id):
+            # 7. 验证答复是否已保存
+            test_check_reply(cookies, test_ticket_id)
+    else:
+        logger.warning("⚠️ 没有可用的工单ID，跳过答复测试")
+
+    # 8. 测试未授权访问
     test_unauthorized_access()
 
     logger.info("\n" + "=" * 60)
-    logger.info("测试完成")
+    logger.info("测试完成 ✅")
     logger.info("=" * 60)
 
 

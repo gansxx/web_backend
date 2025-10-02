@@ -1344,6 +1344,12 @@ def main():
         if not success:
             sys.exit(1)
 
+        # 提醒用户重启 PostgREST 以刷新 schema 缓存
+        if args.target == 'local':
+            logger.warning("⚠️  重要提醒：schema 初始化完成后，请手动重启 PostgREST 容器以刷新 schema 缓存")
+            logger.warning("   执行命令: docker restart supabase-rest")
+            logger.warning("   否则新创建的函数可能无法通过 Supabase RPC 调用")
+
     elif args.list:
         tool.list_backups()
 

@@ -450,7 +450,9 @@ services:
         "-c",
         "config_file=/etc/postgresql/postgresql.conf",
         "-c",
-        "log_min_messages=fatal" # prevents Realtime polling queries from appearing in logs
+        "log_min_messages=fatal", # prevents Realtime polling queries from appearing in logs
+        "-c",
+        "timezone=Asia/Shanghai" # set default timezone to Shanghai
       ]
 
   vector:
