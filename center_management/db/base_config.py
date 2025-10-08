@@ -12,7 +12,6 @@ class BaseConfig:
         self.url: str = os.getenv('SUPABASE_URL', 'http://localhost:8000')
         self.key: str = os.getenv('SERVICE_ROLE_KEY')
         logger.info(f"Supabase URL: {self.url}")
-        logger.info(f"Supabase Key: {self.key}")
         self.supabase: Client = create_client(self.url, self.key)
         logger.info("数据库配置初始化成功")
     

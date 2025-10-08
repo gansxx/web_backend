@@ -285,16 +285,25 @@ async def purchase_free_plan(
         try:
             # 导入必要的模块
             from center_management.test_api_v2 import test_add_user_v2
-            from center_management.orchestrationer import get_host
             from center_management.node_manage import NodeProxy
+            from dotenv import load_dotenv
+            import os
 
-            # 获取默认主机地址
-            hostname = get_host()
+            # 加载环境变量
+            load_dotenv()
+
+            # 获取网关配置 (从环境变量)
+            hostname = os.getenv('gateway_ip')
+            gateway_user = os.getenv('gateway_user', 'admin')  # 默认为 admin
+            if not hostname:
+                logger.error("❌ gateway_ip 环境变量未设置")
+                raise HTTPException(500, detail="服务器配置错误")
+
             key_file = 'id_ed25519'
 
             # 使用NodeProxy连接并生成真实订阅URL
-            logger.info(f"正在为用户 {email} 生成订阅链接...")
-            proxy = NodeProxy(hostname, 22, 'root', key_file)
+            logger.info(f"正在为用户 {email} 生成订阅链接... 连接服务器: {hostname}, 用户: {gateway_user}")
+            proxy = NodeProxy(hostname, 22, gateway_user, key_file)
 
             # 调用test_add_user_v2生成订阅URL
             subscription_url = test_add_user_v2(

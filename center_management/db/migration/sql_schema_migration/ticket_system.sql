@@ -1,11 +1,15 @@
--- 工单管理系统 - 原子性执行
--- 使用方法: psql -v ON_ERROR_STOP=1 -1 -f ticket_system.sql
--- Schema 控制: 使用 get_schema_name() 函数获取 schema 名称
+-- =====================================================
+-- 工单管理系统
+-- =====================================================
+-- 功能：创建工单相关表和管理函数
+-- 使用方法: psql -v ON_ERROR_STOP=1 -f ticket_system.sql
+-- =====================================================
+-- 前置依赖：
+--   必须先执行 00_schema_init.sql 初始化 schema 配置
+--   该脚本依赖 get_schema_name() 函数获取 schema 名称
+-- =====================================================
 
--- 1. 确保依赖的 schema_config 和 get_schema_name() 函数已存在
--- 这些应该由 order_refactored.sql 创建
-
--- 2. 创建 ticket 表
+-- 1. 创建 ticket 表
 DO $$
 DECLARE
     app_schema TEXT := get_schema_name();
@@ -36,7 +40,7 @@ BEGIN
     RAISE NOTICE 'Created ticket table in schema: %', app_schema;
 END $$;
 
--- 3. 创建自动更新 updated_at 的触发器函数
+-- 2. 创建自动更新 updated_at 的触发器函数
 CREATE OR REPLACE FUNCTION update_ticket_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -45,7 +49,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- 4. 为 ticket 表添加更新触发器
+-- 3. 为 ticket 表添加更新触发器
 DO $$
 DECLARE
     app_schema TEXT := get_schema_name();
@@ -60,7 +64,7 @@ BEGIN
     );
 END $$;
 
--- 5. 创建插入工单函数
+-- 4. 创建插入工单函数
 CREATE OR REPLACE FUNCTION insert_ticket(
     p_user_email text,
     p_subject text,
@@ -94,7 +98,7 @@ BEGIN
 END;
 $$;
 
--- 6. 创建查询用户工单函数
+-- 5. 创建查询用户工单函数
 CREATE OR REPLACE FUNCTION fetch_user_tickets(
     p_user_email text
 )
@@ -131,7 +135,7 @@ BEGIN
 END;
 $$;
 
--- 7. 创建更新工单状态函数
+-- 6. 创建更新工单状态函数
 CREATE OR REPLACE FUNCTION update_ticket_status(
     p_ticket_id uuid,
     p_status text
@@ -160,7 +164,7 @@ BEGIN
 END;
 $$;
 
--- 8. 创建查询所有工单函数（管理员用）
+-- 7. 创建查询所有工单函数（管理员用）
 CREATE OR REPLACE FUNCTION fetch_all_tickets(
     p_status text default null,
     p_priority text default null,
@@ -212,7 +216,7 @@ BEGIN
 END;
 $$;
 
--- 9. 设置权限
+-- 8. 设置权限
 DO $$
 DECLARE
     app_schema TEXT := get_schema_name();
@@ -230,7 +234,7 @@ GRANT EXECUTE ON FUNCTION update_ticket_status(uuid, text) TO service_role;
 GRANT EXECUTE ON FUNCTION fetch_all_tickets(text, text, integer, integer) TO service_role;
 GRANT EXECUTE ON FUNCTION update_ticket_updated_at() TO service_role;
 
--- 10. 完成提示
+-- 9. 完成提示
 DO $$
 DECLARE
     app_schema TEXT := get_schema_name();

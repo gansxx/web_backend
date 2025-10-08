@@ -24,7 +24,7 @@ SUPABASE_ANON_KEY = os.getenv('ANON_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000')
 TURNSTILE_SECRET_KEY = os.getenv('TURNSTILE_SECRET_KEY', '')
 logger.info(f"SUPABASE_URL: {SUPABASE_URL}")
-logger.info(f"ANON_KEY:{SUPABASE_ANON_KEY}")
+# logger.info(f"ANON_KEY:{SUPABASE_ANON_KEY}")
 logger.info(f"FRONTEND_URL:{FRONTEND_URL}")
 service_role_key_env = os.getenv('SERVICE_ROLE_KEY')
 masked_service = (

@@ -1,53 +1,15 @@
--- 产品管理脚本 - 原子性执行
--- 使用方法: psql -v ON_ERROR_STOP=1 -1 -f product_refactored.sql
--- Schema 控制: 修改第16行的 'tests' 值即可控制整个脚本
+-- =====================================================
+-- 产品管理脚本
+-- =====================================================
+-- 功能：创建产品相关表和管理函数
+-- 使用方法: psql -v ON_ERROR_STOP=1 -f product_refactored.sql
+-- =====================================================
+-- 前置依赖：
+--   必须先执行 00_schema_init.sql 初始化 schema 配置
+--   该脚本依赖 get_schema_name() 函数获取 schema 名称
+-- =====================================================
 
-
--- 3. 创建或更新 schema 名称配置表
-
-CREATE TABLE IF NOT EXISTS schema_config (
-    schema_name TEXT PRIMARY KEY,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
--- 1. 创建 schema 如果不存在
--- 4. 插入或更新当前 schema 配置
-DO $$
-DECLARE
-    app_schema TEXT := 'tests';
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = app_schema) THEN
-        EXECUTE format('CREATE SCHEMA %I', app_schema);
-        RAISE NOTICE 'Created schema: %', app_schema;
-    END IF;
-    INSERT INTO schema_config (schema_name) VALUES (app_schema)
-    ON CONFLICT (schema_name) DO UPDATE SET created_at = NOW();
-END $$;
-
--- 2. 确保 pg_cron 扩展存在
-CREATE EXTENSION IF NOT EXISTS pg_cron;
-
--- 5. 创建获取 schema 名称的辅助函数
-CREATE OR REPLACE FUNCTION get_schema_name()
-RETURNS TEXT AS $$
-DECLARE
-    result_schema TEXT;
-BEGIN
-    -- 从配置表中获取最新的 schema 名称
-    SELECT schema_name INTO result_schema
-    FROM schema_config
-    ORDER BY created_at DESC
-    LIMIT 1;
-
-    -- 如果没有找到配置，报错
-    IF result_schema IS NULL THEN
-        RAISE EXCEPTION 'Schema configuration not found. Please run the initialization script first.';
-    END IF;
-
-    RETURN result_schema;
-END;
-$$ LANGUAGE plpgsql STABLE;
-
--- 6. 创建 test_products 表
+-- 1. 创建 test_products 表
 DO $$
 DECLARE
     app_schema TEXT := get_schema_name();
@@ -67,7 +29,7 @@ BEGIN
     );
 END $$;
 
--- 7. 创建产品相关函数
+-- 2. 创建产品相关函数
 -- 获取用户产品查询函数
 CREATE OR REPLACE FUNCTION fetch_user_products(
     p_user_email text default null,
@@ -214,7 +176,7 @@ BEGIN
 END;
 $$;
 
--- 8. 设置权限
+-- 3. 设置权限
 DO $$
 DECLARE
     app_schema TEXT := get_schema_name();
@@ -233,7 +195,7 @@ GRANT EXECUTE ON FUNCTION get_product_info(uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION delete_expired_products() TO service_role;
 GRANT EXECUTE ON FUNCTION get_schema_name() TO service_role;
 
--- 9. 完成提示
+-- 4. 完成提示
 DO $$
 DECLARE
     app_schema TEXT := get_schema_name();

@@ -9,5 +9,6 @@ node_modules/
 .vscode/
 .pytest_cache/
 __pycache__/
+*.pyc
 id_ed25519
 docker-compose.override.yml

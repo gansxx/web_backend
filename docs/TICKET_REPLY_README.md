@@ -37,9 +37,7 @@
 source .env
 
 # 执行迁移 SQL
-psql "postgresql://postgres:$POSTGRES_PASSWORD@localhost:5438/postgres" \
-  -v ON_ERROR_STOP=1 \
-  -f center_management/db/migration/sql_schema_migration/ticket_system_add_reply.sql
+uv run center_management/db/migration/pg_dump_remote.py --schema-init
 ```
 
 ### 2. 验证迁移结果
