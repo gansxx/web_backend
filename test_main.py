@@ -21,11 +21,25 @@ app = FastAPI(title="Supabase Login Demo")
 # 从环境变量读取配置
 SUPABASE_URL = os.getenv('SUPABASE_URL', 'http://localhost:8000')
 SUPABASE_ANON_KEY = os.getenv('ANON_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE')
-FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000')
 TURNSTILE_SECRET_KEY = os.getenv('TURNSTILE_SECRET_KEY', '')
+
+# CORS允许的前端地址列表
+# 从环境变量读取，支持逗号分隔的多个域名
+# 默认值为本地开发地址，生产环境应通过环境变量配置
+ALLOWED_FRONTEND_ORIGINS_ENV = os.getenv(
+    'ALLOWED_FRONTEND_ORIGINS',
+    'http://localhost:3000,http://127.0.0.1:3000'
+)
+ALLOWED_ORIGINS = [url.strip() for url in ALLOWED_FRONTEND_ORIGINS_ENV.split(',') if url.strip()]
+
+# 主要前端URL（用于Cookie域配置等）
+# 取ALLOWED_ORIGINS列表的第一个作为主要前端
+FRONTEND_URL = ALLOWED_ORIGINS[0] if ALLOWED_ORIGINS else 'http://localhost:3000'
+
 logger.info(f"SUPABASE_URL: {SUPABASE_URL}")
 # logger.info(f"ANON_KEY:{SUPABASE_ANON_KEY}")
-logger.info(f"FRONTEND_URL:{FRONTEND_URL}")
+logger.info(f"PRIMARY_FRONTEND_URL: {FRONTEND_URL}")
+logger.info(f"ALLOWED_ORIGINS: {ALLOWED_ORIGINS}")
 service_role_key_env = os.getenv('SERVICE_ROLE_KEY')
 masked_service = (
     service_role_key_env[:6] + "..." + service_role_key_env[-6:]
@@ -178,9 +192,10 @@ app.state.FRONTEND_URL = FRONTEND_URL
 app.state.SUPABASE_URL = SUPABASE_URL
 
 # 允许前端 (Next.js) 跨域携带 cookie
+# 支持多个前端域名：selfgo.asia, go.superjiasu.top等
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_URL, "http://127.0.0.1:3000"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
