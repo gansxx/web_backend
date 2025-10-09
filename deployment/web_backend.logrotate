@@ -1,0 +1,44 @@
+/var/log/web_backend/web_backend.log /var/log/web_backend/web_backend_error.log {
+    # 轮转频率：每日轮转，或当文件大小超过50M时立即轮转
+    daily
+    size 50M
+
+    # 保留最近7个轮转的日志文件
+    rotate 7
+
+    # 如果日志文件不存在，不报错
+    missingok
+
+    # 如果日志文件为空，不进行轮转
+    notifempty
+
+    # 延迟压缩，即轮转后的第二次轮转时才压缩
+    # 这样可以确保日志完全写入后再压缩
+    delaycompress
+
+    # 使用gzip压缩旧日志文件
+    compress
+
+    # 轮转后创建新文件的权限设置
+    create 0640 root root
+
+    # 对每个日志文件分别进行轮转，而不是一起处理
+    notifempty
+
+    # 如果多个日志文件使用相同的轮转配置，只执行一次脚本
+    sharedscripts
+
+    # 轮转后执行的脚本
+    postrotate
+        # 向systemd服务发送信号，让其重新打开日志文件
+        # 这样新的日志会写入新创建的文件中
+        /bin/systemctl reload-or-restart web_backend.service > /dev/null 2>&1 || true
+    endscript
+
+    # 日期扩展名格式（可选，用于生成如 web_backend.log-20250109 的文件名）
+    dateext
+    dateformat -%Y%m%d
+
+    # 使用日期作为归档文件的后缀
+    dateyesterday
+}

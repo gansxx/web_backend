@@ -1,0 +1,46 @@
+[Unit]
+Description=Web Backend API Service (FastAPI + Gunicorn)
+Documentation=https://github.com/yourusername/web_backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=root
+Group=root
+WorkingDirectory=/root/web_backend
+
+# Environment
+EnvironmentFile=/root/web_backend/.env
+Environment="PATH=/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin:/bin"
+
+# Execution
+ExecStart=/usr/local/bin/uv run run.py prod
+ExecReload=/bin/kill -s HUP $MAINPID
+
+# Logging
+StandardOutput=append:/var/log/web_backend/web_backend.log
+StandardError=append:/var/log/web_backend/web_backend_error.log
+SyslogIdentifier=web_backend
+
+# Restart policy
+Restart=always
+RestartSec=3s
+StartLimitInterval=300s
+StartLimitBurst=10
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Performance
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Graceful shutdown
+TimeoutStopSec=30s
+KillMode=mixed
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target
