@@ -20,6 +20,7 @@ class EmailRequest(BaseModel):
 class VerifyOtpRequest(BaseModel):
     email: EmailStr
     code: str
+    password: str  # 必填密码字段，用于注册时设置密码
 
 
 class ResetPasswordRequest(BaseModel):
@@ -204,6 +205,19 @@ async def otp_verify(req: VerifyOtpRequest, response: Response, request: Request
     session = getattr(res, "session", None)
     if not session or not getattr(session, "access_token", None):
         return JSONResponse(status_code=400, content={"error": "登录失败"})
+
+    # 验证密码不能为空
+    if not req.password or not req.password.strip():
+        return JSONResponse(status_code=400, content={"error": "密码不能为空"})
+
+    # 在验证成功后设置密码
+    try:
+        supabase.auth.update_user({"password": req.password})
+        logger.info(f"用户 {req.email} 注册时成功设置密码")
+    except Exception as e:
+        logger.error(f"设置密码失败: {str(e)}")
+        return JSONResponse(status_code=500, content={"error": "注册成功但设置密码失败，请使用密码重置功能"})
+
     if callable(set_auth_cookies):
         set_auth_cookies(response, session.access_token, session.refresh_token, session.expires_in)  # type: ignore[arg-type]
     return {"ok": True}
