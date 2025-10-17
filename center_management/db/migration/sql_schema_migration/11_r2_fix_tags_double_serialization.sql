@@ -5,7 +5,8 @@
 --              instead of proper JSONB arrays
 -- Bug: Tags stored as "[\"production\"]" instead of ["production"]
 -- Created: 2025-10-17
--- Dependencies: Requires r2_package_system.sql to be run first
+-- Updated: 2025-10-17 - Renamed to 11_r2_fix_tags_double_serialization.sql
+-- Dependencies: Requires 10_r2_package_system.sql to be run first
 
 -- Fix tags double-serialization in r2_packages table
 DO $$
