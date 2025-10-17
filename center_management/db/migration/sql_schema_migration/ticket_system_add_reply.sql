@@ -34,9 +34,11 @@ BEGIN
 END $$;
 
 -- 2. 替换 update_ticket_status 函数（支持答复参数）
+-- Drop all versions of the function to avoid signature conflicts
 DROP FUNCTION IF EXISTS update_ticket_status(uuid, text);
+DROP FUNCTION IF EXISTS update_ticket_status(uuid, text, text);
 
-CREATE FUNCTION update_ticket_status(
+CREATE OR REPLACE FUNCTION update_ticket_status(
     p_ticket_id uuid,
     p_status text,
     p_reply text DEFAULT NULL
@@ -118,7 +120,7 @@ $$;
 -- 4. 替换 fetch_user_tickets 函数（包含答复字段）
 DROP FUNCTION IF EXISTS fetch_user_tickets(text);
 
-CREATE FUNCTION fetch_user_tickets(
+CREATE OR REPLACE FUNCTION fetch_user_tickets(
     p_user_email text
 )
 RETURNS TABLE (
@@ -160,7 +162,7 @@ $$;
 -- 5. 替换 fetch_all_tickets 函数（包含答复字段）
 DROP FUNCTION IF EXISTS fetch_all_tickets(text, text, integer, integer);
 
-CREATE FUNCTION fetch_all_tickets(
+CREATE OR REPLACE FUNCTION fetch_all_tickets(
     p_status text default null,
     p_priority text default null,
     p_limit integer default 100,

@@ -179,11 +179,21 @@ except Exception as e:
     logger.error(f"初始化 TicketConfig 失败: {e}")
     ticket_db = None
 
+# 初始化 R2 包管理器
+try:
+    from center_management.r2_storage import PackageManager
+    package_manager = PackageManager()
+    logger.info("R2 PackageManager 初始化成功")
+except Exception as e:
+    logger.error(f"初始化 PackageManager 失败: {e}")
+    package_manager = None
+
 # 将共享对象挂载到 app.state，供子路由访问
 app.state.supabase = supabase
 app.state.pd_db = pd_db
 app.state.order_db = order_db
 app.state.ticket_db = ticket_db
+app.state.package_manager = package_manager
 app.state.refresh_session_and_set_cookies = refresh_session_and_set_cookies
 app.state.set_auth_cookies = set_auth_cookies
 app.state.clear_auth_cookies = clear_auth_cookies
@@ -232,6 +242,14 @@ try:
     logger.info("routes.ticket 已注册")
 except Exception as _e:
     logger.error(f"注册 routes.ticket 失败: {_e}")
+
+# 注册 R2 packages 路由
+try:
+    from routes.r2_packages import router as r2_packages_router
+    app.include_router(r2_packages_router)
+    logger.info("routes.r2_packages 已注册")
+except Exception as _e:
+    logger.error(f"注册 routes.r2_packages 失败: {_e}")
 
 class AuthRequest(BaseModel):
     email: EmailStr

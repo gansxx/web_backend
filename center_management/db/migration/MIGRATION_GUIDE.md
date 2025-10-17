@@ -191,8 +191,7 @@ uv run python center_management/db/migration/pg_dump_remote.py \
 ```
 
 **注意：** 此功能从 `sql_schema_migration/` 目录读取 SQL 文件，默认执行：
-- `order_refactored.sql`
-- `product_refactored.sql`
+migration下的所有sql
 
 ### 功能 3: 导出数据库
 

@@ -99,6 +99,9 @@ END;
 $$;
 
 -- 5. 创建查询用户工单函数
+-- 先删除旧版本（如果存在）以避免签名冲突
+DROP FUNCTION IF EXISTS fetch_user_tickets(text);
+
 CREATE OR REPLACE FUNCTION fetch_user_tickets(
     p_user_email text
 )
@@ -165,6 +168,9 @@ END;
 $$;
 
 -- 7. 创建查询所有工单函数（管理员用）
+-- 先删除旧版本（如果存在）以避免签名冲突
+DROP FUNCTION IF EXISTS fetch_all_tickets(text, text, integer, integer);
+
 CREATE OR REPLACE FUNCTION fetch_all_tickets(
     p_status text default null,
     p_priority text default null,

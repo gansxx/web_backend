@@ -54,6 +54,13 @@ def _get_helpers(request: Request):
     )
 
 
+def _is_localhost(request: Request) -> bool:
+    """Check if request is from localhost"""
+    client_host = request.client.host if request.client else None
+    allowed_hosts = ['localhost', '127.0.0.1', '::1']
+    return client_host in allowed_hosts
+
+
 @router.post("/signup")
 async def signup(req: AuthRequest, request: Request):
     supabase = _require_supabase(request)
@@ -157,9 +164,16 @@ async def recall_reset(req: ResetPasswordRequest, request: Request):
 async def login(req: AuthRequest, response: Response, request: Request):
     supabase = _require_supabase(request)
     set_auth_cookies, _, _, _, _ = _get_helpers(request)
-    ok, reason = await _verify_turnstile(request)
-    if not ok:
-        return JSONResponse(status_code=400, content={"error": "人机验证失败", "detail": reason})
+
+    # Skip Turnstile verification for localhost (CLI access)
+    if not _is_localhost(request):
+        ok, reason = await _verify_turnstile(request)
+        if not ok:
+            logger.debug("人机验证失败")
+            return JSONResponse(status_code=400, content={"error": "人机验证失败", "detail": reason})
+    else:
+        logger.debug("Localhost login - skipping Turnstile verification")
+
     try:
         res = supabase.auth.sign_in_with_password({"email": req.email, "password": req.password})
     except Exception:
@@ -168,6 +182,7 @@ async def login(req: AuthRequest, response: Response, request: Request):
 
     session = getattr(res, "session", None)
     if not session or not getattr(session, "access_token", None):
+        logger.debug("access_token未找到")
         return JSONResponse(status_code=400, content={"error": "登录失败"})
     # 登录成功写 cookie
     if callable(set_auth_cookies):
