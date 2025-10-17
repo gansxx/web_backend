@@ -35,7 +35,7 @@ class R2Config:
         self,
         base_url: str = "http://localhost:8001",
         user_id: str = "00000000-0000-0000-0000-000000000000",
-        timeout: int = 30
+        timeout: int = 300  # 增加超时到5分钟以支持大文件上传 (原 30秒)
     ):
         self.base_url = base_url.rstrip('/')
         self.user_id = user_id

@@ -15,7 +15,7 @@ worker_class = "uvicorn.workers.UvicornWorker"
 worker_connections = 1000
 max_requests = 1000  # 重启worker之前处理的最大请求数，防止内存泄漏
 max_requests_jitter = 50  # 随机化重启，避免所有worker同时重启
-timeout = 120  # Worker超时时间（秒）
+timeout = 300  # Worker超时时间（秒） - 增加到5分钟以支持大文件上传 (原 120秒)
 keepalive = 5  # Keep-Alive连接的等待时间
 
 # 日志
