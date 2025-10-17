@@ -248,7 +248,17 @@ async def me(
 ):
     supabase = _require_supabase(request)
     _, _, do_refresh, _, _ = _get_helpers(request)
-    token_to_use = token or access_token
+
+    # Support multiple token sources:
+    # 1. Query parameter (?token=xxx)
+    # 2. Cookie (access_token)
+    # 3. Authorization header (Bearer xxx) - for CLI and API clients
+    auth_header = request.headers.get("authorization") or request.headers.get("Authorization")
+    bearer_token = None
+    if auth_header and auth_header.startswith("Bearer "):
+        bearer_token = auth_header[7:]  # Remove "Bearer " prefix
+
+    token_to_use = token or bearer_token or access_token
     if not token_to_use:
         raise HTTPException(401, detail="未登录")
     try:
