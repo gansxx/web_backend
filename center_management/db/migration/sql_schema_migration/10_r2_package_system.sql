@@ -31,7 +31,7 @@ BEGIN
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-            CONSTRAINT r2_packages_version_check CHECK (version ~ ''^[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z0-9.-]+)?(\\+[a-zA-Z0-9.-]+)?$'')
+            CONSTRAINT r2_packages_version_check CHECK (version ~ ''^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?(\+[a-zA-Z0-9.-]+)?$'')
         )', app_schema);
 
     RAISE NOTICE 'Created table: %.r2_packages', app_schema;
