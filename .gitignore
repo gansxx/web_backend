@@ -12,3 +12,8 @@ __pycache__/
 *.pyc
 id_ed25519
 docker-compose.override.yml
+/docs
+/.serena
+/claudedocs
+/tests/bug_fix_scripts
+/mess
