@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from center_management.test_api_v2 import test_add_user_v2
+from center_management.backend_api_v2 import test_add_user_v2
 from center_management import node_manage as nmanage
 from dotenv import load_dotenv
 import os

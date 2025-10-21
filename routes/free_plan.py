@@ -284,7 +284,7 @@ async def purchase_free_plan(
         subscription_url = None
         try:
             # 导入必要的模块
-            from center_management.test_api_v2 import test_add_user_v2
+            from center_management.backend_api_v2 import test_add_user_v2
             from center_management.node_manage import NodeProxy
             from dotenv import load_dotenv
             import os

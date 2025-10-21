@@ -1,0 +1,123 @@
+# Docker build context exclusions
+# Exclude files not needed in the container to optimize build time and image size
+
+# Python cache and virtual environments
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+.Python
+**/.venv
+**/.env
+**/venv/
+**/ENV/
+**/env.bak/
+**/venv.bak/
+
+# Development and IDE files
+**/.vscode
+**/.idea
+**/.DS_Store
+**/.classpath
+**/.project
+**/.settings
+**/.toolstarget
+**/.vs
+**/*.*proj.user
+**/*.swp
+**/*.swo
+**/.*~
+
+# Git and version control
+**/.git
+**/.gitignore
+**/.gitattributes
+**/.github
+
+# Docker files (don't need in container)
+**/.dockerignore
+**/Dockerfile*
+**/docker-compose*
+**/compose.y*ml
+**/.docker
+
+# Testing and coverage
+**/.pytest_cache
+**/.coverage
+**/htmlcov
+**/.tox
+**/.nox
+# Exclude test files but keep test_main.py (production entry point) and center_management/backend_api_v2.py (production module)
+**/test_*.py
+!test_main.py
+!center_management/backend_api_v2.py
+**/tests/
+**/*_test.py
+
+# Documentation and markdown
+**/README*.md
+**/CHANGELOG*.md
+**/LICENSE*
+**/docs/
+**/claudedocs/
+
+# Build artifacts
+**/dist/
+**/build/
+**/*.egg-info/
+**/.eggs/
+
+# Database files
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+
+# Logs
+**/*.log
+**/logs/
+
+# Temporary files
+**/tmp/
+**/temp/
+**/.tmp
+**/*.tmp
+
+# Configuration examples (keep actual .env for production)
+**/.env.example
+**/.env.*.example
+**/.env.local
+**/.env.development
+**/.env.test
+
+# CSV and data files
+**/csv/
+**/data/
+
+# Volumes directory
+**/volumes/
+
+# Deployment scripts
+**/deployment/
+**/scripts/
+
+# Node.js (if any)
+**/node_modules
+**/npm-debug.log
+**/yarn-error.log
+
+# Database migration artifacts
+**/*.dbmdl
+**/*.jfm
+
+# Secrets
+**/secrets.dev.yaml
+**/values.dev.yaml
+**/*password.txt
+
+# Serena and Claude artifacts
+**/.serena
+**/.claude
+
+# Supabase local files
+**/supabase/.temp
+**/supabase/.branches
