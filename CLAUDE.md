@@ -59,10 +59,19 @@ uv run python orchestrationer.py    # Runs on port 8002
 ```bash
 # Run database sql to test if the updated sql is ok in database
 source .env
-#the command can use to test if the connection to db is ok.It will back Hello world in normal situation 
- psql "postgresql://postgres:$POSTGRES_PASSWORD@localhost:5438/postgres" -v ON_ERROR_STOP=1 -f supabase/migrations/test.sql
-psql "postgresql://postgres:$POSTGRES_PASSWORD@localhost:5438/postgres" -v ON_ERROR_STOP=1 -f supabase/migrations/*.sql
 
+# Test database connection (should return "Hello world")
+psql "postgresql://postgres:$POSTGRES_PASSWORD@localhost:5438/postgres" -v ON_ERROR_STOP=1 -f supabase/migrations/test.sql
+
+# Run migrations from sql_schema_migration directory
+# For migrations that require table ownership changes (e.g., 11_fix_table_ownership.sql):
+PGPASSWORD=$POSTGRES_PASSWORD psql -U supabase_admin -h localhost -p 5438 -d postgres -v ON_ERROR_STOP=1 -f center_management/db/migration/sql_schema_migration/11_fix_table_ownership.sql
+
+# For regular migrations (as postgres user):
+psql "postgresql://postgres:$POSTGRES_PASSWORD@localhost:5438/postgres" -v ON_ERROR_STOP=1 -f center_management/db/migration/sql_schema_migration/12_stripe_integration.sql
+
+# Run all pending migrations (from migration script)
+# Note: Some migrations may require supabase_admin privileges
 ```
 
 
@@ -73,6 +82,11 @@ uv run pytest
 
 # Run main integration test (starts full API server)
 uv run python test_main.py
+
+# Test user addition functionality (NEW - integration tests)
+uv run python tests/integration/test_free_plan_import.py     # Test imports
+uv run python tests/integration/test_add_user_real.py        # Test actual user addition
+uv run python tests/integration/test_add_user_real.py --help # See all options
 
 # Test specific API features (integration tests)
 uv run python test_free_plan_api.py    # Free plan functionality
@@ -101,11 +115,12 @@ cd center_management && uv run python test_ip_whitelist.py
   - IP whitelist security middleware
   - VPS monitoring and bandwidth warnings
   - Status update handling
+- **backend_api_v2.py**: User addition and subscription link generation (production module)
 - **node_manage.py**: VPS/node management system
+- **smart_port_manager.py**: Intelligent port allocation and management
 - **vps_vultur_manage.py**: Vultr VPS provider integration
 - **dns.py**: Tencent Cloud DNS management
 - **encode_jwt.py**: JWT token generation utilities
-- **test_api.py**: API testing utilities
 
 ### Routes (`routes/`)
 - `auth.py`: Authentication endpoints

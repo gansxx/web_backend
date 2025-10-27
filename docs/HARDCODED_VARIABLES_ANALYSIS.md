@@ -50,7 +50,7 @@
 
 **端口范围配置:**
 - `smart_port_manager.py:97,219` - `min_port=10000, max_port=30000` (默认端口范围)
-- `test_api_v2.py:200,201` - `min_port=15000, max_port=16000` (测试端口范围)
+- `backend_api_v2.py:200,201` - `min_port=15000, max_port=16000` (测试端口范围)
 
 **SSH和连接端口:**
 - 多个文件中的 `port=22` (SSH默认端口)
@@ -106,7 +106,7 @@
 - `init_env.sh:67,70` - `'./sb.sh'`, `'./sb_move.sh'`
 
 **SSH密钥路径:**
-- `test_api_v2.py:18` - `'id_ed25519'`
+- `backend_api_v2.py:18` - `'id_ed25519'`
 - `deploy_and_init.py:145,216` - `'id_ed25519'`
 - 多个文件中的 `'/root/.ssh/id_ed25519'`
 

@@ -19,6 +19,7 @@ dependencies = [
     "python-multipart>=0.0.20",
     "requests>=2.32.5",
     "rich>=14.2.0",
+    "stripe>=11.3.0",
     "supabase>=2.20.0",
     "tencentcloud-sdk-python-common>=3.0.1469",
     "tencentcloud-sdk-python-dnspod>=3.0.1459",

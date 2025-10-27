@@ -13,15 +13,42 @@ from center_management.db.product import ProductConfig
 from center_management.db.order import OrderConfig
 from center_management.db.ticket import TicketConfig
 
-# 加载环境变量
+# 加载环境变量 - 先检查环境变量，再尝试从.env文件加载
+logger.info("=== 🔍 Environment Variable Debug START ===")
+logger.info(f"Before load_dotenv():")
+logger.info(f"  SUPABASE_URL: {os.getenv('SUPABASE_URL')}")
+logger.info(f"  ANON_KEY: {os.getenv('ANON_KEY')[:30] if os.getenv('ANON_KEY') else 'None'}...")
+logger.info(f"  SERVICE_ROLE_KEY: {os.getenv('SERVICE_ROLE_KEY')[:30] if os.getenv('SERVICE_ROLE_KEY') else 'None'}...")
+
 load_dotenv()
+
+logger.info(f"After load_dotenv():")
+logger.info(f"  SUPABASE_URL: {os.getenv('SUPABASE_URL')}")
+logger.info(f"  ANON_KEY: {os.getenv('ANON_KEY')[:30] if os.getenv('ANON_KEY') else 'None'}...")
+logger.info(f"  SERVICE_ROLE_KEY: {os.getenv('SERVICE_ROLE_KEY')[:30] if os.getenv('SERVICE_ROLE_KEY') else 'None'}...")
+logger.info("=== 🔍 Environment Variable Debug END ===")
 
 app = FastAPI(title="Supabase Login Demo")
 
-# 从环境变量读取配置
-SUPABASE_URL = os.getenv('SUPABASE_URL', 'http://localhost:8000')
-SUPABASE_ANON_KEY = os.getenv('ANON_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE')
-TURNSTILE_SECRET_KEY = os.getenv('TURNSTILE_SECRET_KEY', '')
+# 从环境变量读取配置 - 必需环境变量，不提供默认值
+SUPABASE_URL = os.getenv('SUPABASE_URL')
+SUPABASE_ANON_KEY = os.getenv('ANON_KEY')
+TURNSTILE_SECRET_KEY = os.getenv('TURNSTILE_SECRET_KEY', '')  # 可选配置
+
+# 验证必需环境变量
+if not SUPABASE_URL:
+    logger.error("❌ SUPABASE_URL environment variable is required but not set!")
+    raise ValueError("SUPABASE_URL environment variable is required")
+
+if not SUPABASE_ANON_KEY:
+    logger.error("❌ ANON_KEY environment variable is required but not set!")
+    raise ValueError("ANON_KEY environment variable is required")
+
+# 安全日志：仅显示密钥的一部分
+logger.info(f"✅ SUPABASE_URL: {SUPABASE_URL}")
+logger.info(f"✅ ANON_KEY (first 30 chars): {SUPABASE_ANON_KEY[:30]}...")
+logger.info(f"✅ ANON_KEY contains 'sqkaaiqnbaebuuntdqvu': {'sqkaaiqnbaebuuntdqvu' in SUPABASE_ANON_KEY}")
+logger.info(f"✅ ANON_KEY is NOT demo key: {'supabase-demo' not in SUPABASE_ANON_KEY}")
 
 # CORS允许的前端地址列表
 # 从环境变量读取，支持逗号分隔的多个域名
@@ -250,6 +277,14 @@ try:
     logger.info("routes.r2_packages 已注册")
 except Exception as _e:
     logger.error(f"注册 routes.r2_packages 失败: {_e}")
+
+# 注册 Stripe 支付路由
+try:
+    from routes.stripe_routes import router as stripe_router
+    app.include_router(stripe_router)
+    logger.info("routes.stripe_routes 已注册")
+except Exception as _e:
+    logger.error(f"注册 routes.stripe_routes 失败: {_e}")
 
 class AuthRequest(BaseModel):
     email: EmailStr
