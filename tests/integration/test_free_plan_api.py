@@ -6,9 +6,43 @@
 import requests
 import json
 import time
+from loguru import logger
 
 # 后端API地址
-API_BASE = "http://localhost:8001"
+BASE_URL = "http://localhost:8001"
+TEST_EMAIL = "tesssuunmao@gmail.com"
+TEST_PASSWORD = "zhang123ZZY"
+
+def test_login() -> str:
+    """测试登录并获取access_token"""
+    logger.info("=== 测试登录 ===")
+
+    response = requests.post(
+        f"{BASE_URL}/login",
+        json={
+            "email": TEST_EMAIL,
+            "password": TEST_PASSWORD,
+            "cf_turnstile_token": "dummy_token_for_localhost"
+        },
+        headers={"Content-Type": "application/json"}
+    )
+
+    if response.status_code == 200:
+        data = response.json()
+        logger.info(f"✅ 登录成功: {data.get('message')}")
+
+        # 从Cookie中获取access_token
+        cookies = response.cookies
+        access_token = cookies.get('access_token')
+        if access_token:
+            logger.info(f"✅ 获取到 access_token: {access_token[:30]}...")
+            return access_token
+        else:
+            logger.error("❌ 未找到 access_token cookie")
+            return None
+    else:
+        logger.error(f"❌ 登录失败: {response.status_code} - {response.text}")
+        return None
 
 def test_free_plan_purchase():
     """测试免费套餐购买流程"""
@@ -16,10 +50,16 @@ def test_free_plan_purchase():
     print("🧪 测试免费套餐购买API...")
     print("=" * 50)
 
+
+    # 1. 登录获取token
+    access_token = test_login()
+    if not access_token:
+        logger.error("❌ 登录失败，无法继续测试")
+        return
     # 1. 测试健康检查
     print("1. 测试健康检查...")
     try:
-        response = requests.get(f"{API_BASE}/health")
+        response = requests.get(f"{BASE_URL}/health")
         if response.status_code == 200:
             print("✅ 健康检查通过")
         else:
@@ -32,7 +72,7 @@ def test_free_plan_purchase():
     # 2. 测试免费套餐检查API（未登录）
     print("\n2. 测试免费套餐检查API（未登录）...")
     try:
-        response = requests.get(f"{API_BASE}/user/free-plan/simple")
+        response = requests.get(f"{BASE_URL}/user/free-plan/simple")
         if response.status_code == 401:
             print("✅ 未登录状态检查正确")
         else:
@@ -44,20 +84,23 @@ def test_free_plan_purchase():
     print("\n3. 测试购买API（未登录）...")
     try:
         response = requests.post(
-            f"{API_BASE}/user/free-plan/purchase",
+            f"{BASE_URL}/user/free-plan/purchase",
+            cookies={"access_token": access_token},
             json={"phone": "", "plan_id": "free", "plan_name": "免费套餐", "duration_days": 30}
         )
-        if response.status_code == 401:
-            print("✅ 未登录状态购买检查正确")
+        if response.status_code == 200:
+            data = response.json()
+            logger.info(f"✅ 购买请求成功:")
+            logger.info(f"{data}")
         else:
-            print(f"❌ 未登录状态购买检查异常: {response.status_code}")
+            logger.error(f"❌ 购买失败: {response.status_code} - {response.text}")
     except Exception as e:
         print(f"❌ 购买API异常: {e}")
 
     # 4. 测试API文档访问
     print("\n4. 测试API文档访问...")
     try:
-        response = requests.get(f"{API_BASE}/openapi.json")
+        response = requests.get(f"{BASE_URL}/openapi.json")
         if response.status_code == 200:
             api_data = response.json()
             paths = api_data.get("paths", {})
@@ -81,8 +124,8 @@ def test_free_plan_purchase():
     print("- 认证验证工作正常")
     print("- CORS配置正确")
     print("\n🔗 前端可以安全调用以下API:")
-    print(f"   - GET {API_BASE}/user/free-plan/simple")
-    print(f"   - POST {API_BASE}/user/free-plan/purchase")
+    print(f"   - GET {BASE_URL}/user/free-plan/simple")
+    print(f"   - POST {BASE_URL}/user/free-plan/purchase")
 
 if __name__ == "__main__":
     test_free_plan_purchase()

@@ -260,9 +260,10 @@ async def purchase_free_plan(
                 trade_num=trade_num,
                 amount=0,  # 免费套餐金额为0
                 email=email,
-                phone=purchase_data.phone
+                phone=purchase_data.phone,
+                payment_provider="free"  # 免费套餐标识
             )
-            logger.info(f"订单插入成功，订单ID: {order_id}")
+            logger.info(f"订单插入成功，订单ID: {order_id}, 支付方式: free")
         except Exception as e:
             logger.error(f"插入订单失败: {e}")
             raise HTTPException(500, detail="创建订单失败")
@@ -313,6 +314,8 @@ async def purchase_free_plan(
                 alias='free_plan',
                 verify_link=True,
                 max_retries=1,
+                up_mbps=8,
+                down_mbps=8,
             )
 
             if subscription_url:

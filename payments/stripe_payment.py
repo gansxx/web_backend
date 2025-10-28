@@ -31,11 +31,12 @@ from loguru import logger
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 
-# 初始化 Stripe
+# 初始化 Stripe（模块级别初始化，如果环境变量在导入时已加载）
 if STRIPE_SECRET_KEY:
     stripe.api_key = STRIPE_SECRET_KEY
+    logger.debug(f"Stripe API key loaded at module level: {STRIPE_SECRET_KEY[:15]}...")
 else:
-    logger.warning("STRIPE_SECRET_KEY not set - Stripe payments will not work")
+    logger.debug("STRIPE_SECRET_KEY not set at module import time - will attempt dynamic loading on first API call")
 
 
 @dataclass
@@ -62,6 +63,21 @@ class StripePaymentService:
     """Stripe 支付服务"""
 
     @staticmethod
+    def _ensure_api_key() -> None:
+        """
+        确保 Stripe API key 已设置
+
+        在每个 Stripe API 调用前调用此方法，确保 API key 在运行时正确加载
+        """
+        if not stripe.api_key:
+            api_key = os.getenv("STRIPE_SECRET_KEY")
+            if api_key:
+                stripe.api_key = api_key
+                logger.info("✅ Stripe API key 已动态加载")
+            else:
+                logger.warning("⚠️ STRIPE_SECRET_KEY 环境变量未设置")
+
+    @staticmethod
     def create_or_get_customer(request: StripeCustomerRequest) -> Optional[stripe.Customer]:
         """
         创建或获取 Stripe 客户
@@ -72,6 +88,9 @@ class StripePaymentService:
         Returns:
             Stripe Customer 对象，失败返回 None
         """
+        # 确保 API key 已设置
+        StripePaymentService._ensure_api_key()
+
         try:
             # 先尝试查找现有客户
             customers = stripe.Customer.list(email=request.email, limit=1)
@@ -113,6 +132,9 @@ class StripePaymentService:
         Returns:
             Payment Intent 对象，失败返回 None
         """
+        # 确保 API key 已设置
+        StripePaymentService._ensure_api_key()
+
         try:
             # 构建 Payment Intent 参数
             intent_data = {
@@ -170,6 +192,9 @@ class StripePaymentService:
         Returns:
             Payment Intent 对象，失败返回 None
         """
+        # 确保 API key 已设置
+        StripePaymentService._ensure_api_key()
+
         try:
             payment_intent = stripe.PaymentIntent.retrieve(payment_intent_id)
             return payment_intent
@@ -188,6 +213,9 @@ class StripePaymentService:
         Returns:
             成功返回 True，失败返回 False
         """
+        # 确保 API key 已设置
+        StripePaymentService._ensure_api_key()
+
         try:
             stripe.PaymentIntent.cancel(payment_intent_id)
             logger.info(f"Canceled Stripe Payment Intent: {payment_intent_id}")
@@ -213,6 +241,9 @@ class StripePaymentService:
         Returns:
             解析后的事件字典，失败返回 None
         """
+        # 确保 API key 已设置（虽然 webhook 验证不需要 API key，但为了一致性添加）
+        StripePaymentService._ensure_api_key()
+
         if secret is None:
             secret = STRIPE_WEBHOOK_SECRET
 
@@ -230,6 +261,76 @@ class StripePaymentService:
         except stripe.SignatureVerificationError as e:
             logger.error(f"Invalid webhook signature: {e}")
             return None
+
+    @staticmethod
+    def create_checkout_session(
+        product_name: str,
+        amount: int,
+        currency: str,
+        customer_email: str,
+        order_id: str,
+        success_url: str,
+        cancel_url: str
+    ) -> Dict[str, Any]:
+        """
+        创建 Stripe Checkout Session
+
+        Args:
+            product_name: 产品名称
+            amount: 金额（分）
+            currency: 货币代码 (usd, cny)
+            customer_email: 客户邮箱
+            order_id: 订单ID（用于 metadata）
+            success_url: 支付成功后的重定向 URL
+            cancel_url: 取消支付后的重定向 URL
+
+        Returns:
+            Dict containing:
+            - success: bool
+            - checkout_session_id: str
+            - checkout_url: str
+            - error: str (if failed)
+        """
+        # 确保 API key 已设置
+        StripePaymentService._ensure_api_key()
+
+        try:
+            # 创建 Checkout Session
+            checkout_session = stripe.checkout.Session.create(
+                line_items=[{
+                    'price_data': {
+                        'currency': currency.lower(),
+                        'product_data': {
+                            'name': product_name,
+                        },
+                        'unit_amount': amount,  # 金额（分）
+                    },
+                    'quantity': 1,
+                }],
+                mode='payment',  # 一次性支付
+                success_url=success_url,  # 支付成功重定向
+                cancel_url=cancel_url,    # 取消支付重定向
+                payment_method_types=['card'],  # Stripe Checkout 自动启用 Google Pay/Apple Pay
+                customer_email=customer_email,
+                metadata={
+                    'order_id': order_id,
+                    'customer_email': customer_email,
+                }
+            )
+
+            logger.info(f"✅ Stripe Checkout Session 创建成功: {checkout_session.id}")
+
+            return {
+                "success": True,
+                "checkout_session_id": checkout_session.id,
+                "checkout_url": checkout_session.url
+            }
+        except stripe.StripeError as e:
+            logger.error(f"❌ 创建 Stripe Checkout Session 失败: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
 
     @staticmethod
     def format_amount_for_display(amount: int, currency: str) -> str:
@@ -270,6 +371,9 @@ def create_payment_session(
     Returns:
         包含 payment_intent 和 customer 信息的字典
     """
+    # 确保 API key 已设置
+    StripePaymentService._ensure_api_key()
+
     service = StripePaymentService()
 
     # 创建或获取客户

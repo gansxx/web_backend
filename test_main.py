@@ -286,6 +286,14 @@ try:
 except Exception as _e:
     logger.error(f"注册 routes.stripe_routes 失败: {_e}")
 
+# 注册 advanced_plan 路由
+try:
+    from routes.advanced_plan import router as advanced_plan_router
+    app.include_router(advanced_plan_router)
+    logger.info("routes.advanced_plan 已注册")
+except Exception as _e:
+    logger.error(f"注册 routes.advanced_plan 失败: {_e}")
+
 class AuthRequest(BaseModel):
     email: EmailStr
     password: str

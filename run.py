@@ -10,17 +10,8 @@ import uvicorn
 from test_main import app
 
 def print_service_info():
-    """打印服务信息"""
-    print("🚀 启动找回密码API服务...")
-    print("📧 支持功能：")
-    print("   - 发送密码重置邮件 (/recall)")
-    print("   - 验证重置验证码 (/recall/verify)")
-    print("   - 重置密码 (/recall/reset)")
-    print("   - 用户注册 (/signup)")
-    print("   - 用户登录 (/login)")
-    print("   - 退出登录 (/logout)")
-    print("   - 用户信息 (/me)")
-    print()
+    
+    print("开始启动服务")
 
 
 def run_development():

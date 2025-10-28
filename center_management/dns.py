@@ -1,7 +1,9 @@
 import os
 import json
 import socket
+import time
 from typing import Tuple, List, Optional, Dict, Any
+import dns.resolver
 from tencentcloud.common import credential
 from tencentcloud.common.profile.client_profile import ClientProfile
 from tencentcloud.common.profile.http_profile import HttpProfile
@@ -286,6 +288,9 @@ class DNSClient:
         """
         检查域名记录是否已在公共DNS生效
 
+        使用 dnspython 库直接查询公共DNS服务器，绕过系统DNS缓存，
+        确保获取最新的DNS记录。支持重试机制以应对DNS传播延迟。
+
         Args:
             domain: 顶级域名（如 example.com）
             subdomain: 子域名（如 www 或 @）
@@ -296,7 +301,7 @@ class DNSClient:
             Tuple[bool, List[str]]: (是否匹配期望IP, 当前解析到的IP列表)
 
         Raises:
-            Exception: DNS解析失败
+            Exception: DNS解析失败（严格模式，所有重试失败后抛出异常）
         """
         # 构建完整域名
         if subdomain in (None, "", "@"):
@@ -304,33 +309,85 @@ class DNSClient:
         else:
             fqdn = f"{subdomain}.{domain}"
 
-        try:
-            logger.info(f"Checking DNS status for {fqdn} (type: {record_type})")
+        # 从环境变量读取配置，提供默认值
+        dns_servers_str = os.getenv("DNS_SERVERS", "114.114.114.114,8.8.8.8")
+        dns_servers = [s.strip() for s in dns_servers_str.split(",")]
+        query_timeout = int(os.getenv("DNS_QUERY_TIMEOUT", "5"))
+        retry_attempts = int(os.getenv("DNS_RETRY_ATTEMPTS", "3"))
+        retry_interval = int(os.getenv("DNS_RETRY_INTERVAL", "2"))
 
-            # 使用系统解析器解析域名，获取所有地址信息
-            infos = socket.getaddrinfo(fqdn, None)
+        logger.info(f"Checking DNS status for {fqdn} (type: {record_type})")
+        logger.info(f"DNS config: servers={dns_servers}, timeout={query_timeout}s, retries={retry_attempts}")
 
-            # 从address info中抽取IP
-            ips = []
-            for ai in infos:
-                try:
-                    ip = ai[4][0]
-                    if ip not in ips:
-                        ips.append(ip)
-                except Exception:
-                    continue
+        # 配置 DNS resolver
+        resolver = dns.resolver.Resolver()
+        resolver.nameservers = dns_servers
+        resolver.timeout = query_timeout
+        resolver.lifetime = query_timeout
 
-            logger.info(f"DNS status: {fqdn} -> {ips}")
+        # 重试逻辑
+        last_error = None
+        for attempt in range(1, retry_attempts + 1):
+            try:
+                logger.info(f"DNS query attempt {attempt}/{retry_attempts} for {fqdn}")
 
-            # 检查是否匹配期望IP
-            if expected_ip:
-                return (expected_ip in ips, ips)
-            else:
-                return (bool(ips), ips)
+                # 执行DNS查询（直接查询公共DNS，绕过系统缓存）
+                answers = resolver.resolve(fqdn, record_type)
 
-        except Exception as err:
-            logger.error(f"DNS resolution failed for {fqdn}: {err}")
-            return (False, [])
+                # 提取IP地址列表
+                ips = [rdata.address for rdata in answers]
+
+                logger.info(f"✅ DNS resolution successful: {fqdn} -> {ips}")
+
+                # 检查是否匹配期望IP
+                if expected_ip:
+                    is_match = expected_ip in ips
+                    if is_match:
+                        logger.info(f"✅ DNS verification passed: {fqdn} resolves to expected IP {expected_ip}")
+                    else:
+                        logger.warning(f"⚠️ DNS mismatch: {fqdn} resolves to {ips}, expected {expected_ip}")
+                    return (is_match, ips)
+                else:
+                    return (bool(ips), ips)
+
+            except dns.resolver.NXDOMAIN as err:
+                # 域名不存在，无需重试
+                last_error = err
+                logger.error(f"❌ DNS resolution failed: domain {fqdn} does not exist (NXDOMAIN)")
+                raise Exception(f"Domain {fqdn} does not exist") from err
+
+            except dns.resolver.NoAnswer as err:
+                # 查询无结果，无需重试
+                last_error = err
+                logger.error(f"❌ DNS resolution failed: no {record_type} record for {fqdn}")
+                raise Exception(f"No {record_type} record found for {fqdn}") from err
+
+            except (dns.resolver.Timeout, dns.exception.Timeout) as err:
+                # 超时错误，可能需要重试
+                last_error = err
+                logger.warning(f"⚠️ DNS query timeout on attempt {attempt}/{retry_attempts}: {err}")
+
+                if attempt < retry_attempts:
+                    logger.info(f"Retrying in {retry_interval} seconds...")
+                    time.sleep(retry_interval)
+                else:
+                    logger.error(f"❌ DNS resolution failed after {retry_attempts} attempts: all queries timed out")
+                    raise Exception(f"DNS resolution timeout for {fqdn} after {retry_attempts} attempts") from err
+
+            except Exception as err:
+                # 其他错误，可能是网络问题，尝试重试
+                last_error = err
+                logger.warning(f"⚠️ DNS query error on attempt {attempt}/{retry_attempts}: {err}")
+
+                if attempt < retry_attempts:
+                    logger.info(f"Retrying in {retry_interval} seconds...")
+                    time.sleep(retry_interval)
+                else:
+                    logger.error(f"❌ DNS resolution failed after {retry_attempts} attempts: {err}")
+                    raise Exception(f"DNS resolution failed for {fqdn}: {err}") from err
+
+        # 理论上不会到达这里，但为了安全起见
+        raise Exception(f"DNS resolution failed for {fqdn}: {last_error}")
 
     def list_records(self, domain: str, record_type: Optional[str] = None,
                     subdomain: Optional[str] = None) -> List[Dict[str, Any]]:

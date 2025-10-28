@@ -18,11 +18,12 @@ class ProductConfig(BaseConfig):
         super().__init__()
         logger.info("产品配置初始化成功")
     
-
+    #已经移除的debug函数
     def test(self):
         try:
-            response = self.supabase.table("test_products").select("*").execute()
-            logger.info(f"查询响应为{response}")
+            # response = self.supabase.table("test_products").select("*").execute()
+            # logger.info(f"查询响应为{response}")
+            logger.info("该函数已经移除")
             # r_2=self.supabase.table("test").insert({"id": 2}).execute()
             # logger.info(f"插入响应为{r_2}")
         except APIError as e:
