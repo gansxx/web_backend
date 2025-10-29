@@ -279,12 +279,13 @@ except Exception as _e:
     logger.error(f"注册 routes.r2_packages 失败: {_e}")
 
 # 注册 Stripe 支付路由
-try:
-    from routes.stripe_routes import router as stripe_router
-    app.include_router(stripe_router)
-    logger.info("routes.stripe_routes 已注册")
-except Exception as _e:
-    logger.error(f"注册 routes.stripe_routes 失败: {_e}")
+#不再注册stripe路由（此路由暂时废弃，日后删除）
+# try:
+#     from routes.stripe_routes import router as stripe_router
+#     app.include_router(stripe_router)
+#     logger.info("routes.stripe_routes 已注册")
+# except Exception as _e:
+#     logger.error(f"注册 routes.stripe_routes 失败: {_e}")
 
 # 注册 advanced_plan 路由
 try:
@@ -293,6 +294,14 @@ try:
     logger.info("routes.advanced_plan 已注册")
 except Exception as _e:
     logger.error(f"注册 routes.advanced_plan 失败: {_e}")
+
+# 注册 unlimited_plan 路由
+try:
+    from routes.unlimited_plan import router as unlimited_plan_router
+    app.include_router(unlimited_plan_router)
+    logger.info("routes.unlimited_plan 已注册")
+except Exception as _e:
+    logger.error(f"注册 routes.unlimited_plan 失败: {_e}")
 
 class AuthRequest(BaseModel):
     email: EmailStr

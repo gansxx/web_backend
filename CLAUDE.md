@@ -132,6 +132,77 @@ cd center_management && uv run python test_ip_whitelist.py
 ### Database Migrations (`center_management/db/migration/sql_schema_migration`)
 All database changes must be managed through migration files in this directory.
 
+#### SQL Migration File Writing Rules
+
+**CRITICAL**: All migration SQL files MUST follow these rules to ensure cross-environment compatibility:
+
+1. **Never Hardcode Schema Names**
+   - ❌ WRONG: `INSERT INTO products.r2_packages (...)`
+   - ❌ WRONG: `SELECT * FROM production.orders`
+   - ✅ CORRECT: Use dynamic schema via `get_schema_name()` function
+
+2. **Always Use Dynamic Schema Pattern**
+   ```sql
+   DO $$
+   DECLARE
+       app_schema TEXT := get_schema_name();  -- Get schema dynamically
+   BEGIN
+       EXECUTE format('
+           CREATE TABLE IF NOT EXISTS %I.table_name (
+               id uuid PRIMARY KEY,
+               ...
+           )',
+           app_schema  -- Use %I for identifier injection
+       );
+   END $$;
+   ```
+
+3. **Use `EXECUTE format()` for Dynamic SQL**
+   - Use `%I` for identifiers (schema names, table names, column names)
+   - Use `$1, $2, $3...` for values passed via USING clause
+   - Quote literals with double single quotes: `''text''` inside format strings
+
+4. **Required Dependencies**
+   - All migration files MUST depend on `00_schema_init.sql` (or `20251017210439_schema_init.sql`)
+   - Document dependencies in file header comments:
+     ```sql
+     -- =====================================================
+     -- 功能说明
+     -- =====================================================
+     -- 前置依赖：
+     --   1. 必须先执行 00_schema_init.sql 初始化 schema 配置
+     --   2. 其他依赖的迁移文件
+     -- =====================================================
+     ```
+
+5. **Example Pattern for INSERT/UPDATE/DELETE**
+   ```sql
+   DO $$
+   DECLARE
+       app_schema TEXT := get_schema_name();
+       some_id UUID := 'a0000000-0000-0000-0000-000000000001';
+   BEGIN
+       EXECUTE format('
+           INSERT INTO %I.table_name (id, name, value)
+           VALUES ($1, $2, $3)
+       ', app_schema)
+       USING some_id, 'name_value', 100;
+   END $$;
+   ```
+
+6. **Why This Matters**
+   - Schema name is configurable via `schema_config` table (default: 'tests')
+   - Different environments use different schemas: 'tests', 'production', etc.
+   - Hardcoded schema names cause migration failures: `relation "products.table" does not exist`
+   - Dynamic schema allows seamless migration across all environments
+
+7. **Verification Checklist**
+   - [ ] File uses `get_schema_name()` to obtain schema
+   - [ ] All table references use `%I` placeholder with `app_schema` variable
+   - [ ] No hardcoded schema names (search for `products.`, `tests.`, `production.`)
+   - [ ] File header documents dependencies
+   - [ ] Test execution: `psql ... -v ON_ERROR_STOP=1 -f migration_file.sql`
+
 ## Database Features
 
 ### Automatic Order Timeout System
@@ -178,6 +249,43 @@ DASHBOARD_PASSWORD
    - Test with integration tests in root directory
 
 
+
+## Documentation Management
+
+### Session Documentation Organization
+
+All documentation created during a development session should be organized by date to maintain clear version history and facilitate future reference.
+
+**Rules**:
+1. **Date-based Folders**: Create `docs/YYYY-MM-DD/` subfolder for each session
+2. **Session Scope**: Move all documents created or significantly modified during the session
+3. **Naming Convention**: Use descriptive names that reflect document purpose
+4. **Index File**: Consider creating `docs/YYYY-MM-DD/README.md` for session summary
+
+**Example Structure**:
+```
+docs/
+├── 2025-10-27/
+│   ├── ADVANCED_PLAN_INTEGRATION.md
+│   ├── ADVANCED_PLAN_QUICKSTART.md
+│   ├── ASYNC_DEPLOYMENT.md
+│   ├── ASYNC_PRODUCT_GENERATION.md
+│   └── MULTI_PAYMENT_USAGE_EXAMPLE.md
+└── 2025-10-28/
+    └── ...
+```
+
+**Document Types**:
+- Integration guides (e.g., `*_INTEGRATION.md`)
+- Quickstart guides (e.g., `*_QUICKSTART.md`)
+- Deployment guides (e.g., `*_DEPLOYMENT.md`)
+- Technical documentation (e.g., `*_DOCUMENTATION.md`)
+- Usage examples (e.g., `*_USAGE_EXAMPLE.md`)
+
+**Access Pattern**:
+- Recent documentation: Check latest date folder
+- Historical reference: Browse by date folders
+- Cross-session topics: Use git log to track document evolution
 
 ## Important Notes
 

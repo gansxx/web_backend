@@ -90,6 +90,7 @@ def test_purchase_advanced_plan(access_token: str):
         cookies={"access_token": access_token},
         json={
             "phone": "13800138000",
+            "plan_id": "advanced",
             "plan_name": "测试用高级套餐",
             "duration_days": 365,
             "payment_method": "stripe"
