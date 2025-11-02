@@ -1,0 +1,13 @@
+{
+    "plan_name":"高级套餐",
+    "plan_id":"advanced",
+    "plan_keyword":"advanced",
+    "plan_price_env":"ADVANCED_PLAN_PRICE",
+    "plan_currency_env":"ADVANCED_PLAN_CURRENCY",
+    "gateway_ip_env":"advanced_gateway_ip",
+    "domain_url":"advanced.selfgo.asia",
+    "url_alias":"advanced_plan",
+    "up_mbps":50,
+    "down_mbps":30,
+    "duration_days":365
+}

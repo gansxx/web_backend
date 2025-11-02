@@ -15,7 +15,7 @@
 - ✅ 完整的购买流程：检查 → 创建订单 → 更新状态 → 生成订阅链接 → 插入产品
 - ✅ 支持套餐信息参数（plan_id, plan_name, duration_days）
 
-#### 2. `/root/supabase_backend/test_main.py`
+#### 2. `/root/supabase_backend/main.py`
 - ✅ 修复了导入路径问题
 - ✅ 将 `spdbConfig` 更新为 `ProductConfig`
 - ✅ 确保所有模块正确导入和注册

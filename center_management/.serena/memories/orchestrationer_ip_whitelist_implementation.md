@@ -6,8 +6,8 @@ Successfully analyzed and implemented IP whitelist security mechanism for orches
 ## Key Discoveries
 
 ### 1. Service Independence Confirmation
-- orchestrationer.py runs completely independently from test_main.py
-- Uses separate FastAPI app instance on port 8002 (vs test_main.py on 8001)
+- orchestrationer.py runs completely independently from main.py
+- Uses separate FastAPI app instance on port 8002 (vs main.py on 8001)
 - No code dependencies or shared imports
 - Can be started/stopped independently
 

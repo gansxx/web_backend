@@ -122,7 +122,7 @@ R2_DOWNLOAD_URL_EXPIRY_SECONDS=3600  # 1 hour
 
 ### 3. Application Integration
 
-Add to `test_main.py`:
+Add to `main.py`:
 
 ```python
 from center_management.r2_storage import PackageManager

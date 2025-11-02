@@ -14,19 +14,19 @@ from center_management.db.order import OrderConfig
 from center_management.db.ticket import TicketConfig
 
 # 加载环境变量 - 先检查环境变量，再尝试从.env文件加载
-logger.info("=== 🔍 Environment Variable Debug START ===")
-logger.info(f"Before load_dotenv():")
-logger.info(f"  SUPABASE_URL: {os.getenv('SUPABASE_URL')}")
-logger.info(f"  ANON_KEY: {os.getenv('ANON_KEY')[:30] if os.getenv('ANON_KEY') else 'None'}...")
-logger.info(f"  SERVICE_ROLE_KEY: {os.getenv('SERVICE_ROLE_KEY')[:30] if os.getenv('SERVICE_ROLE_KEY') else 'None'}...")
+# logger.info("=== 🔍 Environment Variable Debug START ===")
+# logger.info(f"Before load_dotenv():")
+# logger.info(f"  SUPABASE_URL: {os.getenv('SUPABASE_URL')}")
+# logger.info(f"  ANON_KEY: {os.getenv('ANON_KEY')[:30] if os.getenv('ANON_KEY') else 'None'}...")
+# logger.info(f"  SERVICE_ROLE_KEY: {os.getenv('SERVICE_ROLE_KEY')[:30] if os.getenv('SERVICE_ROLE_KEY') else 'None'}...")
 
-load_dotenv()
+# load_dotenv()
 
-logger.info(f"After load_dotenv():")
-logger.info(f"  SUPABASE_URL: {os.getenv('SUPABASE_URL')}")
-logger.info(f"  ANON_KEY: {os.getenv('ANON_KEY')[:30] if os.getenv('ANON_KEY') else 'None'}...")
-logger.info(f"  SERVICE_ROLE_KEY: {os.getenv('SERVICE_ROLE_KEY')[:30] if os.getenv('SERVICE_ROLE_KEY') else 'None'}...")
-logger.info("=== 🔍 Environment Variable Debug END ===")
+# logger.info(f"After load_dotenv():")
+# logger.info(f"  SUPABASE_URL: {os.getenv('SUPABASE_URL')}")
+# logger.info(f"  ANON_KEY: {os.getenv('ANON_KEY')[:30] if os.getenv('ANON_KEY') else 'None'}...")
+# logger.info(f"  SERVICE_ROLE_KEY: {os.getenv('SERVICE_ROLE_KEY')[:30] if os.getenv('SERVICE_ROLE_KEY') else 'None'}...")
+# logger.info("=== 🔍 Environment Variable Debug END ===")
 
 app = FastAPI(title="Supabase Login Demo")
 
@@ -45,10 +45,10 @@ if not SUPABASE_ANON_KEY:
     raise ValueError("ANON_KEY environment variable is required")
 
 # 安全日志：仅显示密钥的一部分
-logger.info(f"✅ SUPABASE_URL: {SUPABASE_URL}")
-logger.info(f"✅ ANON_KEY (first 30 chars): {SUPABASE_ANON_KEY[:30]}...")
-logger.info(f"✅ ANON_KEY contains 'sqkaaiqnbaebuuntdqvu': {'sqkaaiqnbaebuuntdqvu' in SUPABASE_ANON_KEY}")
-logger.info(f"✅ ANON_KEY is NOT demo key: {'supabase-demo' not in SUPABASE_ANON_KEY}")
+# logger.info(f"✅ SUPABASE_URL: {SUPABASE_URL}")
+# logger.info(f"✅ ANON_KEY (first 30 chars): {SUPABASE_ANON_KEY[:30]}...")
+# logger.info(f"✅ ANON_KEY contains 'sqkaaiqnbaebuuntdqvu': {'sqkaaiqnbaebuuntdqvu' in SUPABASE_ANON_KEY}")
+# logger.info(f"✅ ANON_KEY is NOT demo key: {'supabase-demo' not in SUPABASE_ANON_KEY}")
 
 # CORS允许的前端地址列表
 # 从环境变量读取，支持逗号分隔的多个域名
@@ -64,15 +64,15 @@ ALLOWED_ORIGINS = [url.strip() for url in ALLOWED_FRONTEND_ORIGINS_ENV.split(','
 FRONTEND_URL = ALLOWED_ORIGINS[0] if ALLOWED_ORIGINS else 'http://localhost:3000'
 
 logger.info(f"SUPABASE_URL: {SUPABASE_URL}")
-# logger.info(f"ANON_KEY:{SUPABASE_ANON_KEY}")
-logger.info(f"PRIMARY_FRONTEND_URL: {FRONTEND_URL}")
+# # logger.info(f"ANON_KEY:{SUPABASE_ANON_KEY}")
+# logger.info(f"PRIMARY_FRONTEND_URL: {FRONTEND_URL}")
 logger.info(f"ALLOWED_ORIGINS: {ALLOWED_ORIGINS}")
 service_role_key_env = os.getenv('SERVICE_ROLE_KEY')
 masked_service = (
     service_role_key_env[:6] + "..." + service_role_key_env[-6:]
     if service_role_key_env and len(service_role_key_env) > 12 else ("MISSING" if not service_role_key_env else "MASKED")
 )
-logger.info(f"SERVICE_ROLE_KEY: {masked_service}")
+# logger.info(f"SERVICE_ROLE_KEY: {masked_service}")
 
 # 依据 FRONTEND_URL 推导 Cookie 域与安全策略
 _parsed_frontend = urlparse(FRONTEND_URL)
@@ -302,6 +302,20 @@ try:
     logger.info("routes.unlimited_plan 已注册")
 except Exception as _e:
     logger.error(f"注册 routes.unlimited_plan 失败: {_e}")
+    
+# # 注册 test 路由
+# try:
+#     from routes.t_read_j import router as test_router
+#     app.include_router( test_router)
+#     logger.info("routes. test_router 已注册")
+# except Exception as _e:
+#     logger.error(f"注册 routes. test_router 失败: {_e}")
+try:
+    from routes.stripe_webhook import router as stripe_webhook
+    app.include_router(stripe_webhook)
+    logger.info("stripe_webhook 已注册")
+except Exception as _e:
+    logger.error(f"注册 stripe_webhook 失败: {_e}")
 
 class AuthRequest(BaseModel):
     email: EmailStr

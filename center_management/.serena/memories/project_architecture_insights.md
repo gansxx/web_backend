@@ -4,7 +4,7 @@
 The web backend uses a multi-service architecture with clear separation:
 
 ### Main Services
-1. **test_main.py** (Port 8001)
+1. **main.py** (Port 8001)
    - Primary FastAPI application
    - Handles authentication, user data, orders
    - Uses Supabase integration

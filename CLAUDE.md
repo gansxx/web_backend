@@ -81,7 +81,7 @@ psql "postgresql://postgres:$POSTGRES_PASSWORD@localhost:5438/postgres" -v ON_ER
 uv run pytest
 
 # Run main integration test (starts full API server)
-uv run python test_main.py
+uv run python run.py
 
 # Test user addition functionality (NEW - integration tests)
 uv run python tests/integration/test_free_plan_import.py     # Test imports
@@ -296,7 +296,7 @@ docs/
 - **All Python Commands**: Prefix with `uv run` to ensure proper environment isolation
 
 ### Service Architecture
-- **Main API Service** (`test_main.py` via `run.py`): Port 8001
+- **Main API Service** (`main.py` via `run.py`): Port 8001
   - Authentication, user management, payments
   - Routes in `routes/` directory (auth, user_data, ticket, free_plan)
   - Uses ANON_KEY for client authentication

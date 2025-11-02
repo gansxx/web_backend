@@ -7,7 +7,7 @@
 import os
 import sys
 import uvicorn
-from test_main import app
+from main import app
 
 def print_service_info():
     
@@ -20,7 +20,7 @@ def run_development():
     print_service_info()
 
     uvicorn.run(
-        "test_main:app",
+        "main:app",
         host="0.0.0.0",
         port=8001,
         reload=True,

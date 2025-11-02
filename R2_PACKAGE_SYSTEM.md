@@ -38,7 +38,7 @@ routes/
 
 ```
 .env.example                   # R2 configuration variables (updated)
-test_main.py                   # Route registration (updated)
+main.py                   # Route registration (updated)
 ```
 
 ## 🚀 Quick Start

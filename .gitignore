@@ -2,6 +2,8 @@ volumes/db/data
 volumes/storage
 .env
 .env.migration
+.env.docker
+.env.local.docker
 *.csv
 *.log
 test.http

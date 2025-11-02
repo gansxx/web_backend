@@ -47,9 +47,7 @@
 **/htmlcov
 **/.tox
 **/.nox
-# Exclude test files but keep test_main.py (production entry point) and center_management/backend_api_v2.py (production module)
 **/test_*.py
-!test_main.py
 !center_management/backend_api_v2.py
 **/tests/
 **/*_test.py

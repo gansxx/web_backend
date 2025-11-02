@@ -265,6 +265,7 @@ class StripePaymentService:
     @staticmethod
     def create_checkout_session(
         product_name: str,
+        product_id:str,
         amount: int,
         currency: str,
         customer_email: str,
@@ -312,9 +313,12 @@ class StripePaymentService:
                 cancel_url=cancel_url,    # 取消支付重定向
                 payment_method_types=['card'],  # Stripe Checkout 自动启用 Google Pay/Apple Pay
                 customer_email=customer_email,
+                #在这里加入产品数据（以及其他自定义数据）用于确认用户购买得产品以执行不同逻辑
+                #metadata中不能加入嵌套结构
                 metadata={
                     'order_id': order_id,
                     'customer_email': customer_email,
+                    'product_id':  product_id,
                 }
             )
 
