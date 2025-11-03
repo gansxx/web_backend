@@ -24,6 +24,7 @@ dependencies = [
     "supabase>=2.20.0",
     "tencentcloud-sdk-python-common>=3.0.1469",
     "tencentcloud-sdk-python-dnspod>=3.0.1459",
+    "typer>=0.20.0",
     "uv>=0.8.22",
     "uvicorn>=0.37.0",
 ]

@@ -87,9 +87,9 @@
 **/.env.development
 **/.env.test
 
-# CSV and data files
+# CSV  files
 **/csv/
-**/data/
+
 
 # Volumes directory
 **/volumes/

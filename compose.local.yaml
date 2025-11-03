@@ -1,3 +1,4 @@
+#修改该文件中的依赖不再重新下载，浪费时间
 services:
   # Main API Service
   api:
@@ -5,9 +6,8 @@ services:
     # This allows container to access host services via host.docker.internal
     env_file:
       - .env.local.docker
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
+    image: gansxx/web-backend-api:latest
     container_name: web-backend-api-local
     restart: unless-stopped
     ports:

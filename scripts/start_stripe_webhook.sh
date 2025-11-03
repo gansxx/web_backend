@@ -19,6 +19,6 @@ echo ""
 
 # 启动转发
 echo "启动unlimited-plan的webhook"
-stripe listen --forward-to http://localhost:8001/webhook/stripe/unlimited-plan
+stripe listen --forward-to http://localhost:8001/webhook/stripe
 
 
