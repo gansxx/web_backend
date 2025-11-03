@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>您的登录链接</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            background-color: #ffffff;
+            border-radius: 8px;
+            padding: 40px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            color: #06b6d4;
+            margin: 0;
+            font-size: 28px;
+        }
+        .content {
+            margin-bottom: 30px;
+        }
+        .button {
+            display: inline-block;
+            padding: 14px 32px;
+            background-color: #06b6d4;
+            color: #ffffff !important;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: 600;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .button:hover {
+            background-color: #0891b2;
+        }
+        .token-box {
+            background-color: #cffafe;
+            border: 2px dashed #06b6d4;
+            border-radius: 5px;
+            padding: 20px;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .token {
+            font-size: 32px;
+            font-weight: bold;
+            color: #0e7490;
+            letter-spacing: 8px;
+            font-family: 'Courier New', monospace;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e0e0e0;
+            font-size: 12px;
+            color: #666;
+            text-align: center;
+        }
+        .warning {
+            background-color: #fef2f2;
+            border-left: 4px solid #ef4444;
+            padding: 12px;
+            margin: 20px 0;
+            font-size: 14px;
+        }
+        .note {
+            background-color: #e0f2fe;
+            border-left: 4px solid #0ea5e9;
+            padding: 12px;
+            margin: 20px 0;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>✨ 您的魔法登录链接</h1>
+        </div>
+
+        <div class="content">
+            <p>您好！</p>
+            <p>点击下方按钮即可快速登录，无需输入密码：</p>
+
+            <div style="text-align: center;">
+                <a href="{{ .ConfirmationURL }}" class="button">
+                    立即登录
+                </a>
+            </div>
+
+            <div class="note">
+                💡 <strong>提示：</strong>如果按钮无法点击，请复制以下链接到浏览器地址栏访问：<br>
+                <code style="word-break: break-all;">{{ .ConfirmationURL }}</code>
+            </div>
+
+            <div class="token-box">
+                <p style="margin: 0 0 10px 0; color: #155e75;">或者使用以下一次性验证码：</p>
+                <div class="token">{{ .Token }}</div>
+                <p style="margin: 10px 0 0 0; font-size: 12px; color: #164e63;">验证码有效期为 5 分钟</p>
+            </div>
+
+            <div class="warning">
+                🔒 <strong>安全提醒：</strong>
+                <ul style="margin: 10px 0 0 20px; padding: 0;">
+                    <li>此登录链接只能使用一次</li>
+                    <li>链接有效期为 5 分钟</li>
+                    <li>不要将此链接分享给任何人</li>
+                    <li>如果您没有请求登录，请忽略此邮件</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>此邮件由系统自动发送，请勿直接回复。</p>
+            <p>如果您没有请求登录链接，您的账户仍然是安全的。</p>
+            <p style="margin-top: 15px; color: #999;">
+                邮箱地址：{{ .Email }}
+            </p>
+        </div>
+    </div>
+</body>
+</html>

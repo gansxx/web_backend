@@ -20,7 +20,7 @@ from center_management.db.ticket import TicketConfig
 # logger.info(f"  ANON_KEY: {os.getenv('ANON_KEY')[:30] if os.getenv('ANON_KEY') else 'None'}...")
 # logger.info(f"  SERVICE_ROLE_KEY: {os.getenv('SERVICE_ROLE_KEY')[:30] if os.getenv('SERVICE_ROLE_KEY') else 'None'}...")
 
-# load_dotenv()
+load_dotenv()
 
 # logger.info(f"After load_dotenv():")
 # logger.info(f"  SUPABASE_URL: {os.getenv('SUPABASE_URL')}")

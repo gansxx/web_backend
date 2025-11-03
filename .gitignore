@@ -19,3 +19,8 @@ docker-compose.override.yml
 /claudedocs
 /tests/bug_fix_scripts
 /mess
+/supabase/.temp
+ecs_ip_preview.json
+/deployment/.terraform
+deployment/terraform.tfstate.backup
+deployment/terraform.tfstate

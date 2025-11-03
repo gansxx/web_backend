@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>您被邀请加入</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            background-color: #ffffff;
+            border-radius: 8px;
+            padding: 40px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            color: #8b5cf6;
+            margin: 0;
+            font-size: 28px;
+        }
+        .content {
+            margin-bottom: 30px;
+        }
+        .button {
+            display: inline-block;
+            padding: 14px 32px;
+            background-color: #8b5cf6;
+            color: #ffffff !important;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: 600;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .button:hover {
+            background-color: #7c3aed;
+        }
+        .info-box {
+            background-color: #f5f3ff;
+            border-left: 4px solid #8b5cf6;
+            border-radius: 5px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e0e0e0;
+            font-size: 12px;
+            color: #666;
+            text-align: center;
+        }
+        .note {
+            background-color: #dbeafe;
+            border-left: 4px solid #3b82f6;
+            padding: 12px;
+            margin: 20px 0;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎉 您被邀请加入</h1>
+        </div>
+
+        <div class="content">
+            <p>您好！</p>
+            <p>您已被邀请加入我们的服务。点击下方按钮接受邀请并设置您的账户：</p>
+
+            <div style="text-align: center;">
+                <a href="{{ .ConfirmationURL }}" class="button">
+                    接受邀请
+                </a>
+            </div>
+
+            <div class="note">
+                💡 <strong>提示：</strong>如果按钮无法点击，请复制以下链接到浏览器地址栏访问：<br>
+                <code style="word-break: break-all;">{{ .ConfirmationURL }}</code>
+            </div>
+
+            <div class="info-box">
+                <h3 style="margin-top: 0; color: #8b5cf6;">📧 您的邀请信息</h3>
+                <p style="margin: 5px 0;"><strong>邮箱地址：</strong>{{ .Email }}</p>
+                <p style="margin: 5px 0;"><strong>邀请链接有效期：</strong>24 小时</p>
+            </div>
+
+            <div class="note" style="background-color: #fff3cd; border-left-color: #ffc107;">
+                ⏰ <strong>温馨提示：</strong>
+                <ul style="margin: 10px 0 0 20px; padding: 0;">
+                    <li>请在 24 小时内完成注册</li>
+                    <li>首次登录时需要设置密码</li>
+                    <li>如有问题，请联系邀请您的管理员</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>此邮件由系统自动发送，请勿直接回复。</p>
+            <p>如果您不想接受此邀请，请忽略此邮件。</p>
+        </div>
+    </div>
+</body>
+</html>
