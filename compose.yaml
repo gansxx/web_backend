@@ -11,7 +11,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: web-backend-api
+    container_name: web-backend-api-cloud
     restart: unless-stopped
     ports:
       - "8001:8001"

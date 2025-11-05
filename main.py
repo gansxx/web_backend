@@ -74,8 +74,9 @@ masked_service = (
 )
 # logger.info(f"SERVICE_ROLE_KEY: {masked_service}")
 
-# 依据 FRONTEND_URL 推导 Cookie 域与安全策略
-_parsed_frontend = urlparse(FRONTEND_URL)
+# 依据 FRONTEND_URL 推导 Cookie 域与安全策略,parse
+ALLOWED_FRONTEND_ORIGINS_host=os.getenv('ALLOWED_FRONTEND_ORIGINS_host')
+_parsed_frontend = urlparse(ALLOWED_FRONTEND_ORIGINS_host)
 _frontend_host = _parsed_frontend.hostname or "localhost"
 _frontend_scheme = _parsed_frontend.scheme or "http"
 COOKIE_SECURE = _frontend_scheme == "https"
