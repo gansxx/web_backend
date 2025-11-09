@@ -2,7 +2,9 @@ from fastapi import APIRouter, HTTPException, Request, Header, BackgroundTasks
 from loguru import logger
 import os
 
-#理论上可以运行，但还差测试，以及对旧函数的多余部分去掉，以及临时文件的清理
+# 导入公共的异步产品生成函数
+from routes.base_plan import generate_product_background
+
 router = APIRouter(tags=["webhook_stripe"])
 @router.post(f"/webhook/stripe")
 async def stripe_webhook_handler(
@@ -121,86 +123,8 @@ async def stripe_webhook_handler(
     except Exception as e:
         logger.error(f"处理webhook失败: {e}")
         raise HTTPException(500, detail=f"处理webhook失败: {str(e)}")
-    
-async def generate_product_background(
-        product_id:str,
-        order_id: str,
-        customer_email: str,
-        customer_phone: str
-    ):
-        f"""后台任务：生成{product_id}产品"""
-        from center_management.db.order import OrderConfig
-        from center_management.db.product import ProductConfig
-        from center_management.backend_api_v2 import test_add_user_v2
-        from center_management.node_manage import NodeProxy
-        from routes.base_plan import  PlanConfig
-        import json
-        from pathlib import Path
 
-        order_config = OrderConfig()
-        product_config = ProductConfig()
-        
-        #依照product_id将产品json加载为对应的config（product_id必须等于文件名）
-        try:
-            data = Path(__file__).resolve().parent.parent / f'data/products/{product_id}.json'
-            with open(data,'r') as f:
-                _data=json.load(f)
-                config=PlanConfig(**_data)
-        except Exception as e:
-            logger.error(f"文件名可能不存在,报错:{e}")
 
-        try:
-            logger.info(f"🚀 [后台任务] 开始为订单 {order_id} 生成{product_id}产品...")
+# 注意：generate_product_background 函数现已统一到 routes/base_plan.py 中
+# 所有套餐（free, advanced, unlimited）共享同一个异步产品生成函数
 
-            # 获取网关配置(不同配置网关不同)
-            hostname = config.get_gateway_ip()
-            gateway_user = os.getenv('gateway_user', 'admin')
-            key_file = 'id_ed25519'
-
-            # 使用NodeProxy连接并生成真实订阅URL
-            logger.info(f"正在为用户 {customer_email} 生成{config.plan_name}订阅链接...")
-            logger.info(f"连接服务器: {hostname}, 用户: {gateway_user}")
-            proxy = NodeProxy(hostname, 22, gateway_user, key_file)
-
-            # 调用test_add_user_v2生成订阅URL
-            subscription_url = test_add_user_v2(
-                proxy,
-                name_arg=customer_email,
-                url=config.domain_url,
-                alias=config.url_alias,
-                verify_link=True,
-                max_retries=1,
-                up_mbps=config.up_mbps,
-                down_mbps=config.down_mbps,
-            )
-
-            if not subscription_url:
-                raise Exception("订阅链接生成失败")
-
-            logger.info(f"✅ {config.plan_name}订阅链接生成成功: {subscription_url}")
-
-            # 插入产品数据
-            product_id = product_config.insert_product(
-                product_name=config.plan_name,
-                subscription_url=subscription_url,
-                email=customer_email,
-                phone=customer_phone,
-                duration_days=config.duration_days
-            )
-
-            logger.info(f"✅ 产品数据插入成功，产品ID: {product_id}")
-
-            # 更新订单产品状态为"已完成"
-            order_config.update_product_status(order_id, "completed")
-
-            logger.info(f"🎉 [后台任务] 订单 {order_id} {config.plan_name}产品生成完成！")
-
-        except Exception as e:
-            logger.error(f"❌ [后台任务] 订单 {order_id} 产品生成失败: {e}")
-            # 更新订单产品状态为"生成失败"
-            try:
-                order_config.update_product_status(order_id, "failed")
-            except Exception as update_error:
-                logger.error(f"更新订单产品状态为failed失败: {update_error}")
-    
-    

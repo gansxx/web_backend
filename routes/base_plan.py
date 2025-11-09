@@ -24,6 +24,7 @@ class PlanConfig:
     up_mbps: int            # 上传带宽（Mbps）
     down_mbps: int          # 下载带宽（Mbps）
     duration_days: int = 365  # 套餐时长（天）
+    is_free: bool = False   # 是否为免费套餐（免费套餐跳过支付流程）
 
     def get_price(self) -> int:
         """从环境变量读取价格（单位：分）"""
@@ -406,6 +407,7 @@ def create_plan_router(config: PlanConfig) -> APIRouter:
         request: Request,
         response: Response,
         purchase_data: PlanPurchaseRequest,
+        background_tasks: BackgroundTasks,
         token: str | None = None,
         access_token: str | None = Cookie(default=None),
         refresh_token: str | None = Cookie(default=None),
@@ -449,10 +451,23 @@ def create_plan_router(config: PlanConfig) -> APIRouter:
 
             logger.info(f"用户 {email} 开始购买{config.plan_name}: {purchase_data.plan_name}")
 
-            # 1. 生成交易号
+            # 1. 免费套餐检查（仅针对免费套餐）
+            if config.is_free:
+                from center_management.db.product import ProductConfig
+                product_config = ProductConfig()
+                user_products = product_config.fetch_product_user(user_email=email)
+
+                for product in user_products:
+                    if isinstance(product, dict):
+                        subscription_url = product.get("subscription_url", "")
+                        if subscription_url and "free" in str(subscription_url).lower():
+                            logger.warning(f"用户 {email} 已有免费套餐，拒绝购买")
+                            raise HTTPException(400, detail="您已经拥有免费套餐，无法重复购买")
+
+            # 2. 生成交易号
             trade_num = generate_trade_number()
 
-            # 2. 插入订单（状态：待支付）
+            # 3. 插入订单（状态：待支付）
             from center_management.db.order import OrderConfig
             order_config = OrderConfig()
 
@@ -460,17 +475,57 @@ def create_plan_router(config: PlanConfig) -> APIRouter:
                 order_id = order_config.insert_order(
                     product_name=purchase_data.plan_name,
                     trade_num=trade_num,
-                    amount=PLAN_PRICE,
+                    amount=0 if config.is_free else PLAN_PRICE,
                     email=email,
                     phone=purchase_data.phone,
-                    payment_provider=purchase_data.payment_method
+                    payment_provider="free" if config.is_free else purchase_data.payment_method
                 )
-                logger.info(f"订单插入成功，订单ID: {order_id}, 金额: {PLAN_PRICE}分, 支付方式: {purchase_data.payment_method}")
+                logger.info(f"订单插入成功，订单ID: {order_id}, 金额: {0 if config.is_free else PLAN_PRICE}分, 支付方式: {'free' if config.is_free else purchase_data.payment_method}")
             except Exception as e:
                 logger.error(f"插入订单失败: {e}")
                 raise HTTPException(500, detail="创建订单失败")
 
-            # 3. 验证并创建支付会话
+            # 4. 免费套餐直接处理，付费套餐走支付流程
+            if config.is_free:
+                # 免费套餐：直接标记为已支付并异步生成产品
+                try:
+                    # 更新订单状态为已支付
+                    success = order_config.update_order_status(order_id, "已支付")
+                    if not success:
+                        logger.error(f"更新订单状态失败，订单ID: {order_id}")
+                        raise HTTPException(500, detail="更新订单状态失败")
+
+                    # 更新产品状态为生成中
+                    order_config.update_product_status(order_id, "processing")
+                    logger.info(f"✅ 免费套餐订单状态更新成功，订单ID: {order_id}")
+
+                    # 启动后台任务异步生成产品
+                    background_tasks.add_task(
+                        generate_product_background,
+                        product_id=config.plan_id,
+                        order_id=order_id,
+                        customer_email=email,
+                        customer_phone=purchase_data.phone
+                    )
+
+                    logger.info(f"🚀 已启动后台任务生成免费套餐产品，订单: {order_id}")
+
+                    # 立即返回成功响应
+                    return {
+                        "success": True,
+                        "message": f"{purchase_data.plan_name}获取成功，产品生成中",
+                        "order_id": order_id,
+                        "provider": "free",
+                        "payment_data": {},
+                        "amount": 0,
+                        "currency": "free",
+                        "plan_name": purchase_data.plan_name
+                    }
+                except Exception as e:
+                    logger.error(f"处理免费套餐失败: {e}")
+                    raise HTTPException(500, detail=f"处理免费套餐失败: {str(e)}")
+
+            # 5. 付费套餐：验证并创建支付会话
             from payments.payment_factory import PaymentFactory, PaymentProvider
 
             # 验证支付方式
@@ -846,3 +901,106 @@ def create_plan_router(config: PlanConfig) -> APIRouter:
     #         raise HTTPException(500, detail=f"处理webhook失败: {str(e)}")
 
     return router
+
+
+# ============================================================================
+# 公共函数：异步产品生成（适用于所有套餐）
+# ============================================================================
+
+async def generate_product_background(
+    product_id: str,
+    order_id: str,
+    customer_email: str,
+    customer_phone: str
+):
+    """
+    后台任务：异步生成产品（适用于所有套餐）
+
+    Args:
+        product_id: 产品ID（如"free", "advanced", "unlimited"）
+        order_id: 订单ID
+        customer_email: 客户邮箱
+        customer_phone: 客户手机号
+
+    功能：
+        1. 从JSON配置文件加载产品配置
+        2. 连接网关生成订阅链接
+        3. 插入产品数据到数据库
+        4. 更新订单产品状态为completed
+    """
+    from center_management.db.order import OrderConfig
+    from center_management.db.product import ProductConfig
+    from center_management.backend_api_v2 import test_add_user_v2
+    from center_management.node_manage import NodeProxy
+    import json
+    from pathlib import Path
+
+    order_config = OrderConfig()
+    product_config = ProductConfig()
+
+    # 根据 product_id 加载配置
+    try:
+        data_path = Path(__file__).resolve().parent.parent / f'data/products/{product_id}.json'
+        with open(data_path, 'r', encoding='utf-8') as f:
+            _data = json.load(f)
+            config = PlanConfig(**_data)
+    except Exception as e:
+        logger.error(f"❌ 加载产品配置失败 {product_id}.json: {e}")
+        try:
+            order_config.update_product_status(order_id, "failed")
+        except Exception as update_error:
+            logger.error(f"更新订单产品状态为failed失败: {update_error}")
+        return
+
+    try:
+        logger.info(f"🚀 [后台任务] 开始为订单 {order_id} 生成 {config.plan_name} 产品...")
+
+        # 获取网关配置
+        hostname = config.get_gateway_ip()
+        gateway_user = os.getenv('gateway_user', 'admin')
+        key_file = 'id_ed25519'
+
+        # 生成订阅链接
+        logger.info(f"正在为用户 {customer_email} 生成订阅链接...")
+        logger.info(f"连接服务器: {hostname}, 用户: {gateway_user}")
+        proxy = NodeProxy(hostname, 22, gateway_user, key_file)
+
+        subscription_url = test_add_user_v2(
+            proxy,
+            name_arg=customer_email,
+            url=config.domain_url,
+            alias=config.url_alias,
+            verify_link=True,
+            max_retries=1,
+            up_mbps=config.up_mbps,
+            down_mbps=config.down_mbps,
+        )
+
+        if not subscription_url:
+            raise Exception("订阅链接生成失败")
+
+        logger.info(f"✅ {config.plan_name} 订阅链接生成成功: {subscription_url}")
+
+        # 插入产品数据
+        product_db_id = product_config.insert_product(
+            product_name=config.plan_name,
+            subscription_url=subscription_url,
+            email=customer_email,
+            phone=customer_phone,
+            duration_days=config.duration_days
+        )
+
+        logger.info(f"✅ 产品数据插入成功，产品ID: {product_db_id}")
+
+        # 更新订单产品状态为"已完成"
+        order_config.update_product_status(order_id, "completed")
+
+        logger.info(f"🎉 [后台任务] 订单 {order_id} {config.plan_name} 产品生成完成！")
+
+    except Exception as e:
+        logger.error(f"❌ [后台任务] 订单 {order_id} 产品生成失败: {e}")
+        # 更新订单产品状态为"生成失败"
+        try:
+            order_config.update_product_status(order_id, "failed")
+        except Exception as update_error:
+            logger.error(f"更新订单产品状态为failed失败: {update_error}")

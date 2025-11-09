@@ -1,0 +1,14 @@
+{
+    "plan_name": "免费套餐",
+    "plan_id": "free",
+    "plan_keyword": "free",
+    "plan_price_env": "FREE_PLAN_PRICE",
+    "plan_currency_env": "FREE_PLAN_CURRENCY",
+    "gateway_ip_env": "gateway_ip",
+    "domain_url": "jiasu.selfgo.asia",
+    "url_alias": "free_plan",
+    "up_mbps": 8,
+    "down_mbps": 8,
+    "duration_days": 30,
+    "is_free": true
+}
