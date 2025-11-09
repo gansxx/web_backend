@@ -8,6 +8,6 @@
     "domain_url":"advanced.selfgo.asia",
     "url_alias":"advanced_plan",
     "up_mbps":50,
-    "down_mbps":30,
+    "down_mbps":50,
     "duration_days":365
 }

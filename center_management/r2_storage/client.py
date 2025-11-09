@@ -72,6 +72,7 @@ class R2Client:
         self.access_key_id = access_key_id or os.getenv('R2_ACCESS_KEY_ID')
         self.secret_access_key = secret_access_key or os.getenv('R2_SECRET_ACCESS_KEY')
         self.bucket_name = bucket_name or os.getenv('R2_BUCKET_NAME')
+        logger.info(f"当前r2使用的bucket是{self.bucket_name}")
         self.public_domain = public_domain or os.getenv('R2_PUBLIC_DOMAIN')
 
         # Validate required credentials

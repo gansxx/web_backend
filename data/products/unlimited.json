@@ -8,6 +8,6 @@
     "domain_url":"unlimited.selfgo.asia",
     "url_alias":"unlimited_plan",
     "up_mbps":50,
-    "down_mbps":30,
+    "down_mbps":80,
     "duration_days":365
 }
