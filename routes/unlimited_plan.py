@@ -4,21 +4,10 @@
 """
 from routes.base_plan import create_plan_router, PlanConfig
 from loguru import logger
+from routes.config_loader import load_plan_config
 
 # 无限流量套餐配置
-config = PlanConfig(
-    plan_name="无限流量套餐",
-    plan_id="unlimited",
-    plan_keyword="unlimited",
-    plan_price_env="UNLIMITED_PLAN_PRICE",
-    plan_currency_env="UNLIMITED_PLAN_CURRENCY",
-    gateway_ip_env="unlimited_gateway_ip",
-    domain_url="unlimited.selfgo.asia",
-    url_alias="unlimited_plan",
-    up_mbps=20,
-    down_mbps=10,
-    duration_days=365
-)
+config = load_plan_config("unlimited")
 
 # 创建路由
 router = create_plan_router(config)

@@ -314,8 +314,8 @@ async def purchase_free_plan(
                 alias='free_plan',
                 verify_link=True,
                 max_retries=1,
-                up_mbps=8,
-                down_mbps=8,
+                up_mbps=20,
+                down_mbps=20,
             )
 
             if subscription_url:
