@@ -24,3 +24,5 @@ ecs_ip_preview.json
 /deployment/.terraform
 deployment/terraform.tfstate.backup
 deployment/terraform.tfstate
+/deployment
+todo.md
