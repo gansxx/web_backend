@@ -228,6 +228,143 @@ DASHBOARD_USERNAME
 DASHBOARD_PASSWORD
 ```
 
+## Deployment
+
+The project supports multiple deployment methods:
+
+### Method 1: Aliyun Function Compute (FC) - Serverless Deployment
+
+**Recommended for**: Production, auto-scaling, pay-per-use scenarios
+
+```bash
+# Quick start
+cd deployment
+
+# 1. Configure environment variables (.env)
+# Add: ALICLOUD_ACCESS_KEY, ALICLOUD_SECRET_KEY, ACR_REGISTRY, ACR_NAMESPACE
+
+# 2. Configure Terraform variables
+cp terraform_fc.tfvars.example terraform_fc.tfvars
+vim terraform_fc.tfvars  # Fill in configuration
+
+# 3. One-command deployment
+./deploy_fc.sh
+```
+
+**Features**:
+- ✅ Auto-scaling based on traffic
+- ✅ Pay-per-use (cost-effective for variable traffic)
+- ✅ Zero server maintenance
+- ✅ Built-in load balancing
+- ⚠️ Cold start (can be mitigated with reserved instances)
+
+**Files**:
+- `Dockerfile.fc`: FC-optimized container image
+- `deployment/terraform_fc.tf`: Terraform configuration
+- `deployment/terraform_fc_variables.tf`: Variable definitions
+- `deployment/deploy_fc.sh`: Deployment script
+- `deployment/FC_DEPLOYMENT_GUIDE.md`: Detailed guide (100+ pages)
+- `deployment/README_FC.md`: Quick reference
+
+**Key Configuration** (`terraform_fc.tfvars`):
+```hcl
+container_image = "registry.cn-shenzhen.aliyuncs.com/namespace/web-backend:latest"
+memory_size = 512
+timeout = 300
+environment_variables = {
+  SUPABASE_URL = "https://..."
+  ANON_KEY = "eyJhbG..."
+  # ... other env vars
+}
+```
+
+**Advanced Features**:
+- Custom domain with HTTPS
+- VPC networking for private resources
+- Reserved instances to avoid cold starts
+- Canary deployment (gradual rollout)
+- Auto-scaling policies
+- Logging with SLS
+
+See [FC_DEPLOYMENT_GUIDE.md](deployment/FC_DEPLOYMENT_GUIDE.md) for comprehensive documentation.
+
+---
+
+### Method 2: Aliyun ECS - Preview Environment
+
+**Recommended for**: Preview/staging environments, quick testing
+
+```bash
+cd deployment
+source ../.env  # Load ALICLOUD credentials
+./deploy_ali_preview.sh
+```
+
+**Features**:
+- ✅ Fast deployment using launch template
+- ✅ Automatic DNS update (Cloudflare)
+- ✅ Fixed cost, predictable performance
+- ❌ Manual scaling required
+
+**Files**:
+- `deployment/terraform.tf`: ECS configuration
+- `deployment/deploy_ali_preview.sh`: Deploy script
+- `deployment/preview_dns.py`: Auto-update DNS to Cloudflare
+
+**Flow**:
+1. Terraform creates ECS from template `lt-wz9g3b8paafo1mq42el7`
+2. Gets public IP
+3. Updates `preview.selfgo.asia` DNS record
+
+**Destroy preview environment**:
+```bash
+cd deployment
+terraform destroy -auto-approve
+```
+
+---
+
+### Method 3: Systemd Service - Production VPS
+
+**Recommended for**: Long-running production on owned VPS
+
+```bash
+cd deployment
+sudo ./deploy.sh
+```
+
+**Features**:
+- ✅ Systemd integration (auto-restart, logging)
+- ✅ Production-ready with Gunicorn
+- ✅ Full control over server
+- ❌ Manual server maintenance required
+
+**Files**:
+- `deployment/deploy.sh`: Systemd deployment
+- `deployment/web_backend.service`: Systemd unit file
+- `gunicorn_config.py`: Gunicorn configuration
+
+**Service Management**:
+```bash
+sudo systemctl status web_backend
+sudo systemctl restart web_backend
+sudo systemctl logs -f web_backend
+```
+
+---
+
+### Deployment Comparison
+
+| Feature | FC (Serverless) | ECS (Preview) | Systemd (VPS) |
+|---------|----------------|---------------|---------------|
+| **Cost** | Pay-per-use | ~60¥/month | Fixed |
+| **Scaling** | Auto | Manual | Manual |
+| **Maintenance** | Zero | Low | High |
+| **Cold Start** | Yes (2-5s) | No | No |
+| **Best For** | Production | Staging | Production |
+
+---
+
 ## Development Workflow
 
 1. **Database Changes**:

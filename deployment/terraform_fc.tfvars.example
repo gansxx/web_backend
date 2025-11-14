@@ -1,0 +1,208 @@
+# =====================================================
+# Terraform 变量配置示例文件
+# =====================================================
+# 使用方法：
+#   1. 复制此文件为 terraform_fc.tfvars
+#   2. 填写实际的配置值
+#   3. 执行 terraform apply -var-file=terraform_fc.tfvars
+# =====================================================
+
+# =====================================================
+# 阿里云认证配置（必需）
+# =====================================================
+
+alicloud_access_key = "LTAI5t..."  # 从环境变量 ALICLOUD_ACCESS_KEY 读取
+alicloud_secret_key = "your-secret-key"     # 从环境变量 ALICLOUD_SECRET_KEY 读取
+
+# =====================================================
+# 区域配置
+# =====================================================
+
+region = "cn-shenzhen"  # 可选：cn-hangzhou, cn-shanghai, cn-beijing 等
+
+# =====================================================
+# FC 服务和函数配置
+# =====================================================
+
+fc_service_name  = "web-backend-service"
+fc_function_name = "web-api"
+
+# =====================================================
+# 容器镜像配置（必需）
+# =====================================================
+
+# 阿里云容器镜像服务（ACR）地址
+# 格式：registry.<region>.aliyuncs.com/<namespace>/<repository>:<tag>
+container_image = "registry.cn-shenzhen.aliyuncs.com/your-namespace/web-backend:latest"
+
+container_port = 9000  # 容器监听端口（与 Dockerfile.fc 中的 EXPOSE 一致）
+
+# =====================================================
+# 资源配置
+# =====================================================
+
+memory_size           = 512   # 内存（MB）: 128-32768
+cpu_size              = null  # CPU 核数（null = 自动分配）
+timeout               = 300   # 超时时间（秒）: 1-600
+disk_size             = 512   # 临时磁盘（MB）
+instance_concurrency  = 100   # 单实例并发数: 1-200
+
+# =====================================================
+# 环境变量配置（敏感信息）
+# =====================================================
+
+environment_variables = {
+  # Supabase 配置
+  SUPABASE_URL          = "https://your-project.supabase.co"
+  ANON_KEY              = "eyJhbG..."
+  SERVICE_ROLE_KEY      = "eyJhbG..."
+
+  # 数据库配置
+  POSTGRES_PASSWORD     = "your-postgres-password"
+
+  # JWT 配置
+  JWT_SECRET            = "your-jwt-secret"
+
+  # 前端 URL
+  FRONTEND_URL          = "https://app.selfgo.asia"
+
+  # Turnstile 配置（可选）
+  TURNSTILE_SECRET_KEY  = "0x4AAA..."
+
+  # Cloudflare DNS 配置（可选）
+  cloudflare_dns_key    = "your-cloudflare-api-token"
+
+  # 应用环境
+  ENVIRONMENT           = "production"
+  USE_GUNICORN          = "true"
+}
+
+# =====================================================
+# HTTP 触发器配置
+# =====================================================
+
+http_auth_type = "anonymous"  # 或 "function"（需要签名认证）
+
+# =====================================================
+# 自定义域名配置（可选）
+# =====================================================
+
+enable_custom_domain = false
+
+# 如果启用自定义域名，需要配置以下参数：
+# custom_domain_name = "api.selfgo.asia"
+# enable_https       = true
+# ssl_cert_name      = "selfgo-ssl-cert"
+# ssl_certificate    = file("path/to/certificate.crt")
+# ssl_private_key    = file("path/to/private.key")
+# enable_waf         = false
+
+# =====================================================
+# VPC 网络配置（可选 - 用于访问 RDS/Redis 等）
+# =====================================================
+
+enable_vpc = false
+
+# 如果启用 VPC，需要配置以下参数：
+# vpc_id            = "vpc-xxx"
+# vswitch_ids       = ["vsw-xxx", "vsw-yyy"]
+# security_group_id = "sg-xxx"
+# internet_access   = true  # 是否允许访问公网
+
+# =====================================================
+# 日志配置（可选）
+# =====================================================
+
+enable_logging = false
+
+# 如果启用日志，需要配置以下参数：
+# sls_project  = "fc-web-backend-logs"
+# sls_logstore = "function-logs"
+
+# =====================================================
+# NAS 存储配置（可选 - 用于持久化存储）
+# =====================================================
+
+enable_nas = false
+
+# 如果启用 NAS，需要配置以下参数：
+# nas_user_id  = 10003
+# nas_group_id = 10003
+# nas_mount_points = [
+#   {
+#     server_addr = "xxx.cn-shenzhen.nas.aliyuncs.com:/path"
+#     mount_dir   = "/mnt/nas"
+#   }
+# ]
+
+# =====================================================
+# 预留实例配置（可选 - 避免冷启动）
+# =====================================================
+
+enable_provision = false
+
+# 如果启用预留实例，需要配置以下参数：
+# provision_target = 1  # 预留 1 个实例常驻
+
+# 定时伸缩（可选）
+# provision_scheduled_actions = [
+#   {
+#     name                = "scale-up-morning"
+#     schedule_expression = "cron(0 8 * * ? *)"  # 每天 8:00 扩容
+#     target              = 3
+#   },
+#   {
+#     name                = "scale-down-night"
+#     schedule_expression = "cron(0 22 * * ? *)"  # 每天 22:00 缩容
+#     target              = 1
+#   }
+# ]
+
+# 目标追踪策略（可选）
+# provision_target_tracking_policies = [
+#   {
+#     name          = "cpu-tracking"
+#     metric_type   = "ProvisionedConcurrencyUtilization"
+#     metric_target = 0.7  # 70% 利用率时触发扩容
+#   }
+# ]
+
+# =====================================================
+# 灰度发布配置（可选）
+# =====================================================
+
+enable_alias = false
+
+# 如果启用别名，需要配置以下参数：
+# alias_version_id = "1"  # 指向的版本号
+#
+# # 灰度流量分配（可选）
+# canary_version_weight = {
+#   "1" = 90  # 90% 流量到版本 1
+#   "2" = 10  # 10% 流量到版本 2（金丝雀版本）
+# }
+
+# =====================================================
+# 异步调用配置（可选）
+# =====================================================
+
+enable_async_invoke = false
+
+# 如果启用异步调用，需要配置以下参数：
+# async_max_event_age       = 3600  # 事件最大存活时间（秒）
+# async_max_retry_attempts  = 2     # 最大重试次数
+# async_failure_destination = "acs:mns:cn-shenzhen:123456789:topic/fc-failures"
+# async_success_destination = "acs:mns:cn-shenzhen:123456789:topic/fc-successes"
+
+# =====================================================
+# DNS 自动更新配置（可选）
+# =====================================================
+
+enable_dns_update = false
+
+# =====================================================
+# 服务角色配置（可选）
+# =====================================================
+
+# 如果函数需要访问其他阿里云服务（如 OSS、RDS、MNS 等），需要配置服务角色
+# fc_role_arn = "acs:ram::123456789:role/AliyunFCDefaultRole"
