@@ -285,7 +285,7 @@ async def purchase_free_plan(
         subscription_url = None
         try:
             # 导入必要的模块
-            from center_management.backend_api_v2 import test_add_user_v2
+            from center_management.backend_api_v3 import test_add_user_v3
             from center_management.node_manage import NodeProxy
             from dotenv import load_dotenv
             import os
@@ -307,7 +307,7 @@ async def purchase_free_plan(
             proxy = NodeProxy(hostname, 22, gateway_user, key_file)
 
             # 调用test_add_user_v2生成订阅URL
-            subscription_url = test_add_user_v2(
+            subscription_url = test_add_user_v3(
                 proxy,
                 name_arg=email,
                 url='jiasu.selfgo.asia',

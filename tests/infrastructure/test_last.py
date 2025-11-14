@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from center_management.backend_api_v2 import test_add_user_v2
+from center_management.backend_api_v3 import test_add_user_v3
 from center_management import node_manage as nmanage
 from dotenv import load_dotenv
 import os
@@ -19,7 +19,7 @@ if __name__ == "__main__":
     # AWS Lightsail 使用 admin 用户，不是 root
     proxy = nmanage.NodeProxy(hostname, 22, 'admin', key_file)
     try:
-        url = test_add_user_v2(
+        url = test_add_user_v3(
             proxy,
             name_arg='test_user_4@example.com',
             url='jiasu.superjiasu.top',

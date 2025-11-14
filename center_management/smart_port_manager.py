@@ -1,3 +1,4 @@
+#delete in the future
 from . import node_manage as nmanage
 from loguru import logger
 import subprocess
@@ -215,7 +216,7 @@ def verify_hy2_link_simple(link):
         logger.error(f"链接验证异常: {e}")
         return False
 
-
+# 重点重构对象
 def add_user_with_smart_port(proxy, name_arg, hostname=None, max_retries=3,
                            min_port=10000, max_port=30000,
                            up_mbps=50, down_mbps=50, verify_link=True,

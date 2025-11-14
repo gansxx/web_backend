@@ -2,7 +2,8 @@ from fastapi import APIRouter, HTTPException, Request, Header, BackgroundTasks
 from loguru import logger
 import os
 
-#理论上可以运行，但还差测试，以及对旧函数的多余部分去掉，以及临时文件的清理
+#需要旧函数的多余部分去掉，以及临时文件的清理
+# 2.将生成产品的generate_product逻辑单独独立出来管理，以方便兼容未来其他支付方式
 router = APIRouter(tags=["webhook_stripe"])
 @router.post(f"/webhook/stripe")
 async def stripe_webhook_handler(
@@ -131,7 +132,7 @@ async def generate_product_background(
         f"""后台任务：生成{product_id}产品"""
         from center_management.db.order import OrderConfig
         from center_management.db.product import ProductConfig
-        from center_management.backend_api_v2 import test_add_user_v2
+        from center_management.backend_api_v3 import test_add_user_v3
         from center_management.node_manage import NodeProxy
         from routes.base_plan import  PlanConfig
         import json
@@ -162,8 +163,8 @@ async def generate_product_background(
             logger.info(f"连接服务器: {hostname}, 用户: {gateway_user}")
             proxy = NodeProxy(hostname, 22, gateway_user, key_file)
 
-            # 调用test_add_user_v2生成订阅URL
-            subscription_url = test_add_user_v2(
+            # 调用test_add_user_v3生成订阅URL
+            subscription_url = test_add_user_v3(
                 proxy,
                 name_arg=customer_email,
                 url=config.domain_url,
