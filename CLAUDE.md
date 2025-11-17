@@ -65,6 +65,12 @@ uv run python center_management/heartbeat_detector.py  # Runs on port 8003
 # Run heartbeat detector in Docker (recommended for production)
 ./scripts/run_heartbeat_docker.sh start  # Start as Docker container
 docker compose -f docker-compose.heartbeat.yml up -d  # Alternative Docker method
+
+# Run standalone heartbeat detector (completely independent, no project dependencies)
+cd heartbeat_standalone
+./run.sh docker      # Start with Docker (recommended)
+./run.sh start       # Start with Python directly
+./run.sh test        # Test configuration
 ```
 
 ### Database Management
@@ -149,6 +155,25 @@ uv run python center_management/test_heartbeat.py
 
 ### Payments (`payments/`)
 - `h5zhifu.py`: H5 payment integration
+
+### Standalone Heartbeat Detector (`heartbeat_standalone/`)
+**Completely independent package - no project dependencies**
+- **heartbeat_detector.py**: Single-file service implementation
+- **config.json**: Configuration example
+- **pyproject.toml**: Minimal dependencies (FastAPI, Uvicorn, Pydantic, Loguru only)
+- **Dockerfile**: Optimized standalone build (~100MB image)
+- **docker-compose.yml**: Container orchestration
+- **run.sh**: Helper script for all operations
+- **README.md**: Complete standalone documentation
+
+Advantages:
+- Can be deployed anywhere independently
+- Smaller Docker image size
+- Faster builds
+- No coupling with main project
+- Easier to maintain and distribute
+
+See [heartbeat_standalone/README.md](heartbeat_standalone/README.md) for complete documentation.
 
 ### Database Migrations (`center_management/db/migration/sql_schema_migration`)
 All database changes must be managed through migration files in this directory.
