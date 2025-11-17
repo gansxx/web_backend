@@ -30,6 +30,11 @@ All Supabase services are containerized using Docker Compose:
   - VPS/infrastructure management and monitoring
   - IP whitelist security middleware
   - Bandwidth warnings and status updates
+- **Heartbeat Detector Service**: Independent FastAPI service (port 8003)
+  - IP and port availability monitoring
+  - Distinguishes between IP-level and port-level failures
+  - REST API for status queries and manual checks
+  - Automatic periodic health checks
 - **Package Management**: uv for dependency management and virtual environment handling
 - **Testing**: pytest with custom test scripts
 - **Logging**: loguru for structured logging
@@ -53,6 +58,9 @@ uv run python run.py  # Runs on port 8001 by default
 # Run orchestrationer service (independent service)
 cd center_management
 uv run python orchestrationer.py    # Runs on port 8002
+
+# Run heartbeat detector service (independent service)
+uv run python center_management/heartbeat_detector.py  # Runs on port 8003
 ```
 
 ### Database Management
@@ -102,6 +110,9 @@ cd center_management/db/test_scripts && uv run python test_order_timeout.py
 
 # Test orchestrationer service
 cd center_management && uv run python test_ip_whitelist.py
+
+# Test heartbeat detector service
+uv run python center_management/test_heartbeat.py
 ```
 
 ## Key Modules
@@ -115,6 +126,12 @@ cd center_management && uv run python test_ip_whitelist.py
   - IP whitelist security middleware
   - VPS monitoring and bandwidth warnings
   - Status update handling
+- **heartbeat_detector.py**: Independent FastAPI service for IP/port monitoring
+  - Async concurrent port availability checks
+  - Distinguishes IP-level vs port-level failures
+  - REST API for status queries and manual checks
+  - Configurable via JSON file or environment variables
+  - See [docs/HEARTBEAT_DETECTOR.md](docs/HEARTBEAT_DETECTOR.md) for details
 - **backend_api_v2.py**: User addition and subscription link generation (production module)
 - **node_manage.py**: VPS/node management system
 - **smart_port_manager.py**: Intelligent port allocation and management
