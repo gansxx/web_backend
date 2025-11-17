@@ -1,0 +1,87 @@
+# Docker Compose configuration for Heartbeat Detector Service
+#
+# Usage:
+#   Start service:         docker compose -f docker-compose.heartbeat.yml up -d
+#   View logs:             docker compose -f docker-compose.heartbeat.yml logs -f heartbeat
+#   Stop service:          docker compose -f docker-compose.heartbeat.yml down
+#   Rebuild & restart:     docker compose -f docker-compose.heartbeat.yml up -d --build
+#
+# Start with main services:
+#   docker compose -f docker-compose-supabase.yml -f docker-compose.heartbeat.yml up -d
+
+version: '3.8'
+
+services:
+  heartbeat:
+    container_name: heartbeat-detector
+    build:
+      context: .
+      dockerfile: Dockerfile.heartbeat
+    image: web_backend_heartbeat:latest
+    restart: unless-stopped
+
+    # Port mapping
+    ports:
+      - "8003:8003"
+
+    # Environment variables
+    environment:
+      # Service configuration
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      TZ: ${TZ:-Asia/Shanghai}
+
+      # Heartbeat detector configuration (optional - can use config file instead)
+      HEARTBEAT_CONFIG_FILE: /app/heartbeat_config.json
+      # HEARTBEAT_TARGETS: '[{"ip": "192.168.1.1", "ports": [22, 80, 443]}]'
+      # HEARTBEAT_TIMEOUT: 3.0
+      # HEARTBEAT_INTERVAL: 60
+      # HEARTBEAT_MAX_WORKERS: 50
+      # HEARTBEAT_AUTO_CHECK: true
+
+    # Volume mounts
+    volumes:
+      # Mount custom configuration file (optional)
+      - ./heartbeat_config.json:/app/heartbeat_config.json:ro
+      # Persist logs
+      - heartbeat_logs:/app/logs
+      # Mount custom config from host (optional)
+      # - ./custom_heartbeat_config.json:/app/heartbeat_config.json:ro
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+    # Network configuration
+    networks:
+      - heartbeat_network
+
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    # Resource limits (optional)
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+# Named volumes
+volumes:
+  heartbeat_logs:
+    driver: local
+
+# Networks
+networks:
+  heartbeat_network:
+    driver: bridge

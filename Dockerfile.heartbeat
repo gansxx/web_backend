@@ -1,0 +1,80 @@
+# syntax=docker/dockerfile:1
+#
+# Dockerfile for Heartbeat Detector Service
+# A standalone service for monitoring IP and port availability
+#
+
+# Multi-stage build optimized for uv package manager
+# Base image with Python 3.12
+ARG PYTHON_VERSION=3.12
+FROM python:${PYTHON_VERSION}-slim as base
+
+# Prevents Python from writing pyc files
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# Keeps Python from buffering stdout and stderr
+ENV PYTHONUNBUFFERED=1
+
+# Set timezone environment variable
+ENV TZ=Asia/Shanghai
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies and set timezone
+RUN apt-get update && apt-get install -y \
+    curl \
+    ca-certificates \
+    tzdata \
+    && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
+    && echo "Asia/Shanghai" > /etc/timezone \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv package manager
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Create non-privileged user
+ARG UID=10001
+RUN adduser \
+    --disabled-password \
+    --gecos "" \
+    --home "/home/appuser" \
+    --shell "/bin/bash" \
+    --uid "${UID}" \
+    appuser
+
+# Change ownership of /app directory to appuser
+RUN chown -R appuser:appuser /app
+
+# Copy dependency files first for better caching
+COPY --chown=appuser:appuser pyproject.toml ./
+COPY --chown=appuser:appuser uv.lock* ./
+
+# Switch to non-privileged user for dependency installation
+USER appuser
+
+# Install dependencies using uv
+# This creates a virtual environment in /app/.venv
+RUN uv sync --frozen --no-dev
+
+# Copy only necessary files for heartbeat detector
+COPY --chown=appuser:appuser center_management/__init__.py ./center_management/
+COPY --chown=appuser:appuser center_management/heartbeat_detector.py ./center_management/
+COPY --chown=appuser:appuser heartbeat_config.json* ./
+
+# Create logs directory for heartbeat detector
+RUN mkdir -p /app/logs && chown appuser:appuser /app/logs
+
+# Set environment variables
+ENV ENVIRONMENT=production
+ENV HEARTBEAT_CONFIG_FILE=/app/heartbeat_config.json
+
+# Expose heartbeat detector port
+EXPOSE 8003
+
+# Health check for heartbeat detector service
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD curl -f http://localhost:8003/health || exit 1
+
+# Run the heartbeat detector service
+CMD ["uv", "run", "python", "center_management/heartbeat_detector.py"]

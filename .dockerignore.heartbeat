@@ -1,0 +1,107 @@
+# .dockerignore for Heartbeat Detector
+# Optimizes Docker build by excluding unnecessary files
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+logs/
+*.log
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Documentation (not needed in container)
+docs/
+*.md
+!README.md
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore*
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Database files (if any)
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment files
+.env*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Only include what we need for heartbeat detector
+# Keep:
+# - center_management/heartbeat_detector.py
+# - center_management/__init__.py
+# - heartbeat_config.json
+# - pyproject.toml
+# - uv.lock
+
+# Exclude other center_management modules we don't need
+center_management/backend_api_v2.py
+center_management/data_integrate.py
+center_management/deploy_and_init.py
+center_management/deploy_and_dns.py
+center_management/dns.py
+center_management/node_meta.py
+center_management/node_manage.py
+center_management/orchestrationer.py
+center_management/smart_port_manager.py
+center_management/vps_vultur_manage.py
+center_management/encode_jwt.py
+center_management/test_*.py
+center_management/db/
+
+# Exclude routes and other services
+routes/
+payments/
+supabase/
+tests/
+test_*.py
+
+# Terraform and infrastructure
+terraform/
+*.tf
+*.tfvars
+
+# Backups
+*.bak
+*.backup

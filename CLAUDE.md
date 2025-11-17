@@ -61,6 +61,10 @@ uv run python orchestrationer.py    # Runs on port 8002
 
 # Run heartbeat detector service (independent service)
 uv run python center_management/heartbeat_detector.py  # Runs on port 8003
+
+# Run heartbeat detector in Docker (recommended for production)
+./scripts/run_heartbeat_docker.sh start  # Start as Docker container
+docker compose -f docker-compose.heartbeat.yml up -d  # Alternative Docker method
 ```
 
 ### Database Management

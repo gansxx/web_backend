@@ -96,6 +96,138 @@ export HEARTBEAT_AUTO_CHECK=true
 uv run python center_management/heartbeat_detector.py
 ```
 
+## Docker 部署
+
+### 方式一：使用辅助脚本（推荐）
+
+```bash
+# 启动服务
+./scripts/run_heartbeat_docker.sh start
+
+# 查看日志
+./scripts/run_heartbeat_docker.sh logs
+
+# 查看状态
+./scripts/run_heartbeat_docker.sh status
+
+# 停止服务
+./scripts/run_heartbeat_docker.sh stop
+
+# 重启服务
+./scripts/run_heartbeat_docker.sh restart
+
+# 重新构建镜像
+./scripts/run_heartbeat_docker.sh build
+
+# 清理所有容器和镜像
+./scripts/run_heartbeat_docker.sh clean
+```
+
+### 方式二：使用 Docker Compose
+
+```bash
+# 启动服务
+docker compose -f docker-compose.heartbeat.yml up -d
+
+# 查看日志
+docker compose -f docker-compose.heartbeat.yml logs -f heartbeat
+
+# 停止服务
+docker compose -f docker-compose.heartbeat.yml down
+
+# 重新构建并启动
+docker compose -f docker-compose.heartbeat.yml up -d --build
+```
+
+### 方式三：手动构建和运行
+
+```bash
+# 构建镜像
+docker build -f Dockerfile.heartbeat -t heartbeat-detector:latest .
+
+# 运行容器
+docker run -d \
+  --name heartbeat-detector \
+  -p 8003:8003 \
+  -v $(pwd)/heartbeat_config.json:/app/heartbeat_config.json:ro \
+  -v heartbeat_logs:/app/logs \
+  heartbeat-detector:latest
+
+# 查看日志
+docker logs -f heartbeat-detector
+
+# 停止容器
+docker stop heartbeat-detector
+
+# 删除容器
+docker rm heartbeat-detector
+```
+
+### Docker 配置说明
+
+#### 环境变量
+
+在 `docker-compose.heartbeat.yml` 中可以配置以下环境变量：
+
+```yaml
+environment:
+  # 使用配置文件（推荐）
+  HEARTBEAT_CONFIG_FILE: /app/heartbeat_config.json
+
+  # 或者直接通过环境变量配置
+  HEARTBEAT_TARGETS: '[{"ip": "192.168.1.1", "ports": [22, 80, 443]}]'
+  HEARTBEAT_TIMEOUT: 3.0
+  HEARTBEAT_INTERVAL: 60
+  HEARTBEAT_MAX_WORKERS: 50
+  HEARTBEAT_AUTO_CHECK: true
+```
+
+#### 自定义配置文件
+
+1. 创建自定义配置文件 `my_heartbeat_config.json`
+2. 修改 `docker-compose.heartbeat.yml`：
+
+```yaml
+volumes:
+  - ./my_heartbeat_config.json:/app/heartbeat_config.json:ro
+```
+
+#### 日志持久化
+
+日志自动保存到 Docker volume `heartbeat_logs`，可以通过以下方式查看：
+
+```bash
+# 查看日志文件
+docker exec heartbeat-detector ls -lh /app/logs/
+
+# 读取日志
+docker exec heartbeat-detector tail -f /app/logs/heartbeat_*.log
+```
+
+#### 与其他服务集成
+
+与 Supabase 和其他服务一起运行：
+
+```bash
+docker compose -f docker-compose-supabase.yml -f docker-compose.heartbeat.yml up -d
+```
+
+#### 资源限制
+
+默认配置限制：
+- CPU: 最多 0.5 核心
+- 内存: 最多 512MB
+
+可在 `docker-compose.heartbeat.yml` 中调整：
+
+```yaml
+deploy:
+  resources:
+    limits:
+      cpus: '1.0'
+      memory: 1024M
+```
+
 ## 配置说明
 
 ### 配置参数
