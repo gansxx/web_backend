@@ -1,0 +1,20 @@
+{
+  "targets": [
+    {
+      "ip": "127.0.0.1",
+      "ports": [22, 80, 443]
+    },
+    {
+      "ip": "8.8.8.8",
+      "ports": [53]
+    },
+    {
+      "ip": "1.1.1.1",
+      "ports": [53, 80, 443]
+    }
+  ],
+  "timeout": 3.0,
+  "check_interval": 60,
+  "max_workers": 50,
+  "enable_auto_check": true
+}

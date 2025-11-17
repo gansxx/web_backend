@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  heartbeat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: heartbeat-detector:latest
+    container_name: heartbeat-detector
+    restart: unless-stopped
+
+    # Port mapping
+    ports:
+      - "8003:8003"
+
+    # Environment variables
+    environment:
+      TZ: Asia/Shanghai
+      HEARTBEAT_CONFIG_FILE: /app/config.json
+      # Optional: Override configuration via environment variables
+      # HEARTBEAT_TARGETS: '[{"ip": "192.168.1.1", "ports": [22, 80, 443]}]'
+      # HEARTBEAT_TIMEOUT: 3.0
+      # HEARTBEAT_INTERVAL: 60
+      # HEARTBEAT_MAX_WORKERS: 50
+      # HEARTBEAT_AUTO_CHECK: true
+
+    # Volumes
+    volumes:
+      # Mount custom configuration (optional)
+      - ./config.json:/app/config.json:ro
+      # Persist logs
+      - heartbeat_logs:/app/logs
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  heartbeat_logs:
+    driver: local

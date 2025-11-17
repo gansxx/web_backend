@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Logs
+logs/
+*.log
+
+# Testing
+.pytest_cache/
+.coverage
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+README.md
+*.md
+
+# Docker
+.dockerignore
+docker-compose*.yml.bak
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Lock file (will be generated during build)
+uv.lock
