@@ -281,14 +281,16 @@ async def purchase_free_plan(
         except Exception as e:
             logger.error(f"更新订单状态失败: {e}")
             raise HTTPException(500, detail="更新订单状态失败")
+
+        # 5. 使用后台任务异步生成订阅链接和产品
         background_tasks.add_task(
                 free_product_background,
                 order_id=order_id,
-                plan_name= purchase_data.plan_name,
+                plan_name=purchase_data.plan_name,
                 email=email,
-                duration_days=360,
-                phone=""  # Checkout 不需要手机号
-            )
+                phone=purchase_data.phone,
+                duration_days=360
+        )
 
         # 7. 返回成功响应
         return {
@@ -305,15 +307,16 @@ async def purchase_free_plan(
         raise HTTPException(500, detail="购买失败")
     
 async def free_product_background(
-    email:str,
-    plan_name:str,
-    phone:str,
-    duration_days:int,
-    order_id
+    order_id: str,
+    plan_name: str,
+    email: str,
+    phone: str,
+    duration_days: int
 ):
+    """后台任务：异步生成订阅链接和产品数据"""
     try:
         # 导入必要的模块
-        from center_management.backend_api_v2 import test_add_user_v2
+        from center_management.backend_api_v3 import test_add_user_v3
         from center_management.node_manage import NodeProxy
         from dotenv import load_dotenv
         import os
@@ -331,10 +334,10 @@ async def free_product_background(
         key_file = 'id_ed25519'
 
         # 使用NodeProxy连接并生成真实订阅URL
-        logger.info(f"正在为用户 {email} 生成订阅链接... 连接服务器: {hostname}, 用户: {gateway_user}")
+        logger.info(f"[后台任务] 正在为用户 {email} 生成订阅链接... 连接服务器: {hostname}, 用户: {gateway_user}")
         proxy = NodeProxy(hostname, 22, gateway_user, key_file)
 
-        # 调用test_add_user_v2生成订阅URL
+        # 调用test_add_user_v3生成订阅URL (使用v3自动端口分配)
         subscription_url = test_add_user_v3(
             proxy,
             name_arg=email,
@@ -347,13 +350,13 @@ async def free_product_background(
         )
 
         if subscription_url:
-            logger.info(f"✅ 订阅链接生成成功: {subscription_url}")
+            logger.info(f"✅ [后台任务] 订阅链接生成成功: {subscription_url}")
         else:
-            logger.error(f"❌为用户{email}生成订阅链接生成失败")
+            logger.error(f"❌ [后台任务] 为用户{email}生成订阅链接失败")
             raise HTTPException(500, detail="订阅链接生成失败")
 
     except Exception as e:
-        logger.error(f"生成订阅链接时发生错误: {e}")
+        logger.error(f"[后台任务] 生成订阅链接时发生错误: {e}")
         raise HTTPException(500, detail=f"生成订阅链接时发生错误: {str(e)}")
 
     logger.info(f"最终订阅链接: {subscription_url}")

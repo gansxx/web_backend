@@ -606,6 +606,4 @@ def create_plan_router(config: PlanConfig) -> APIRouter:
             logger.error(f"购买{config.plan_name}失败: {e}")
             raise HTTPException(500, detail="购买失败")
 
-
-
     return router

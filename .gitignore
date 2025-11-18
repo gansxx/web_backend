@@ -12,6 +12,7 @@ node_modules/
 .pytest_cache/
 __pycache__/
 *.pyc
+uv.lock
 id_ed25519
 docker-compose.override.yml
 /docs

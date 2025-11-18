@@ -133,6 +133,67 @@ def run_remote_self_sb_change(proxy, port_arg=None, name_arg=None, up_mbps=None,
 
 	return exit_status, hy2_link, out, err
 
+def run_add_user_v3(proxy, name_arg=None, alias=None,up_mbps=None,down_mbps=None,script_path='/root/sing-box-v2ray/sb_user_manager/add_user.py'):
+    """在远端执行已存在的 self_sb_change.sh 脚本以注册用户，并返回 hy2_link。
+
+    参数:
+        proxy: NodeProxy对象，用于SSH连接
+        alias: 用户套餐计划，如
+        name_arg: 用户名参数
+        up_mbps: 上传带宽限制
+        down_mbps: 下载带宽限制
+        script_path: 脚本路径
+
+    返回值: (exit_status, hy2_link_or_none, stdout, stderr)
+    """
+    args = []
+    if name_arg is not None:
+        args.append(f"-n {shlex.quote(str(name_arg))}")
+    if up_mbps is not None:
+        args.append(f"-u {int(up_mbps)}")
+    if down_mbps is not None:
+        args.append(f"-d {int(down_mbps)}")
+    if alias is not None:
+        args.append(f"-a {alias}")
+
+    argstr = ' '.join(args)
+    command = f"sudo python3 {script_path} {argstr}"
+    logger.info(f"Executing remote script: {command}")
+
+    exit_status, out, err = proxy.execute_command(command)
+
+    # 远程脚本通过 SSH 返回纯文本输出，需要用正则表达式提取信息
+    result = {}
+    hy2_link = None
+
+    if out and out.strip():
+        # 尝试提取 hysteria2 链接
+        # 格式: hysteria2://password@server:port?...
+        link_match = re.search(r"hysteria2://[A-Za-z0-9\-._~%:@/?&=+#]+", out)
+        if link_match:
+            hy2_link = link_match.group(0)
+            result['share_link'] = hy2_link
+
+        # 尝试提取端口号
+        # 格式: "✓ Allocated port: 28282"
+        port_match = re.search(r"Allocated port:\s+(\d+)", out)
+        if port_match:
+            result['port'] = int(port_match.group(1))
+
+        # 尝试提取套餐计划
+        # 格式: "Adding user: xxx with plan: free_plan"
+        plan_match = re.search(r"with plan:\s+(\w+)", out)
+        if plan_match:
+            result['plan'] = plan_match.group(1)
+
+        # 尝试提取用户名
+        # 格式: "Adding user: test_user@example.com"
+        user_match = re.search(r"Adding user:\s+([^\s]+)", out)
+        if user_match:
+            result['name'] = user_match.group(1)
+
+    return exit_status, hy2_link, result if result else out, err
+
 
 def verify_hy2_link(uri, script_path=None, timeout=30, cwd=None):
 	"""调用本地的 `link_verificate.sh` 脚本验证给定的 hysteria2 URI 是否可用。
