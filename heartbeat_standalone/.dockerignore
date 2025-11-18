@@ -30,9 +30,10 @@ logs/
 .git/
 .gitignore
 
-# Documentation
-README.md
+# Documentation (keep README.md for package metadata)
+# README.md is needed by hatchling build system
 *.md
+!README.md
 
 # Docker
 .dockerignore
@@ -41,6 +42,3 @@ docker-compose*.yml.bak
 # OS
 .DS_Store
 Thumbs.db
-
-# Lock file (will be generated during build)
-uv.lock

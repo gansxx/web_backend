@@ -1,8 +1,5 @@
-# syntax=docker/dockerfile:1
-#
 # Standalone Dockerfile for Heartbeat Detector
 # This image contains ONLY the heartbeat detector service
-#
 
 FROM python:3.12-slim
 
@@ -39,8 +36,8 @@ RUN adduser \
     appuser \
     && chown -R appuser:appuser /app
 
-# Copy dependency file
-COPY --chown=appuser:appuser pyproject.toml ./
+# Copy dependency files and README (needed by hatchling)
+COPY --chown=appuser:appuser pyproject.toml uv.lock README.md ./
 
 # Switch to non-privileged user
 USER appuser

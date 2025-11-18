@@ -10,7 +10,7 @@
 - 可作为独立服务运行
 - 提供REST API查询检测状态和手动触发检测
 """
-
+#将其中的定期逻辑改为外部实现
 import asyncio
 import time
 import json

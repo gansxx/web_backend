@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Response, Request, Cookie
+from fastapi import APIRouter, HTTPException, Response, Request, Cookie,BackgroundTasks
 from loguru import logger
 from typing import Dict, Any, List
 from pydantic import BaseModel
@@ -43,6 +43,7 @@ async def check_free_plan(
         raise HTTPException(500, detail="数据库未初始化")
 
     token_to_use = token or access_token
+    #当前没有验证token,严重安全问题
     if not token_to_use:
         raise HTTPException(401, detail="未登录")
 
@@ -190,6 +191,7 @@ async def check_free_plan_simple(
 async def purchase_free_plan(
     request: Request,
     response: Response,
+    background_tasks: BackgroundTasks,
     purchase_data: FreePlanPurchaseRequest,
     token: str | None = None,
     access_token: str | None = Cookie(default=None),
@@ -279,85 +281,103 @@ async def purchase_free_plan(
         except Exception as e:
             logger.error(f"更新订单状态失败: {e}")
             raise HTTPException(500, detail="更新订单状态失败")
-
-        # 5. 生成订阅链接
-        #目前用户名默认只使用邮件名
-        subscription_url = None
-        try:
-            # 导入必要的模块
-            from center_management.backend_api_v2 import test_add_user_v2
-            from center_management.node_manage import NodeProxy
-            from dotenv import load_dotenv
-            import os
-
-            # 加载环境变量
-            load_dotenv()
-
-            # 获取网关配置 (从环境变量)
-            hostname = os.getenv('gateway_ip')
-            gateway_user = os.getenv('gateway_user', 'admin')  # 默认为 admin
-            if not hostname:
-                logger.error("❌ gateway_ip 环境变量未设置")
-                raise HTTPException(500, detail="服务器配置错误")
-
-            key_file = 'id_ed25519'
-
-            # 使用NodeProxy连接并生成真实订阅URL
-            logger.info(f"正在为用户 {email} 生成订阅链接... 连接服务器: {hostname}, 用户: {gateway_user}")
-            proxy = NodeProxy(hostname, 22, gateway_user, key_file)
-
-            # 调用test_add_user_v2生成订阅URL
-            subscription_url = test_add_user_v2(
-                proxy,
-                name_arg=email,
-                url='jiasu.selfgo.asia',
-                alias='free_plan',
-                verify_link=True,
-                max_retries=1,
-                up_mbps=20,
-                down_mbps=20,
-            )
-
-            if subscription_url:
-                logger.info(f"✅ 订阅链接生成成功: {subscription_url}")
-            else:
-                logger.error("❌ 订阅链接生成失败")
-                raise HTTPException(500, detail="订阅链接生成失败")
-
-        except Exception as e:
-            logger.error(f"生成订阅链接时发生错误: {e}")
-            raise HTTPException(500, detail=f"生成订阅链接时发生错误: {str(e)}")
-
-        logger.info(f"最终订阅链接: {subscription_url}")
-
-        # 6. 调用insert_product插入产品数据
-        from center_management.db.product import ProductConfig
-        product_config = ProductConfig()
-        try:
-            product_id = product_config.insert_product(
-                product_name=purchase_data.plan_name,
-                subscription_url=subscription_url,
+        background_tasks.add_task(
+                free_product_background,
+                order_id=order_id,
+                plan_name= purchase_data.plan_name,
                 email=email,
-                phone=purchase_data.phone,
-                duration_days=purchase_data.duration_days
+                duration_days=360,
+                phone=""  # Checkout 不需要手机号
             )
-            logger.info(f"产品数据插入成功，产品ID: {product_id}")
-        except Exception as e:
-            logger.error(f"插入产品数据失败: {e}")
-            raise HTTPException(500, detail="创建产品失败")
 
         # 7. 返回成功响应
         return {
             "success": True,
             "message": f"{purchase_data.plan_name}获取成功",
             "order_id": order_id,
-            "product_id": product_id,
-            "subscription_url": subscription_url,
             "plan_name": purchase_data.plan_name
         }
-
+        
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"购买免费套餐失败: {e}")
         raise HTTPException(500, detail="购买失败")
+    
+async def free_product_background(
+    email:str,
+    plan_name:str,
+    phone:str,
+    duration_days:int,
+    order_id
+):
+    try:
+        # 导入必要的模块
+        from center_management.backend_api_v2 import test_add_user_v2
+        from center_management.node_manage import NodeProxy
+        from dotenv import load_dotenv
+        import os
+
+        # 加载环境变量
+        load_dotenv()
+
+        # 获取网关配置 (从环境变量)
+        hostname = os.getenv('gateway_ip')
+        gateway_user = os.getenv('gateway_user', 'admin')  # 默认为 admin
+        if not hostname:
+            logger.error("❌ gateway_ip 环境变量未设置")
+            raise HTTPException(500, detail="服务器配置错误")
+
+        key_file = 'id_ed25519'
+
+        # 使用NodeProxy连接并生成真实订阅URL
+        logger.info(f"正在为用户 {email} 生成订阅链接... 连接服务器: {hostname}, 用户: {gateway_user}")
+        proxy = NodeProxy(hostname, 22, gateway_user, key_file)
+
+        # 调用test_add_user_v2生成订阅URL
+        subscription_url = test_add_user_v3(
+            proxy,
+            name_arg=email,
+            url='jiasu.selfgo.asia',
+            alias='free_plan',
+            verify_link=True,
+            max_retries=1,
+            up_mbps=20,
+            down_mbps=20,
+        )
+
+        if subscription_url:
+            logger.info(f"✅ 订阅链接生成成功: {subscription_url}")
+        else:
+            logger.error(f"❌为用户{email}生成订阅链接生成失败")
+            raise HTTPException(500, detail="订阅链接生成失败")
+
+    except Exception as e:
+        logger.error(f"生成订阅链接时发生错误: {e}")
+        raise HTTPException(500, detail=f"生成订阅链接时发生错误: {str(e)}")
+
+    logger.info(f"最终订阅链接: {subscription_url}")
+
+    # 6. 调用insert_product插入产品数据
+    from center_management.db.product import ProductConfig
+    product_config = ProductConfig()
+    try:
+        product_id = product_config.insert_product(
+            product_name=plan_name,
+            subscription_url=subscription_url,
+            email=email,
+            phone=phone,
+            duration_days=duration_days
+        )
+        logger.info(f"产品数据插入成功，产品ID: {product_id}")
+
+        # 更新订单产品状态为"已完成"
+        from center_management.db.order import OrderConfig
+        order_config = OrderConfig()
+        order_config.update_product_status(order_id, "completed")
+
+        logger.info(f"🎉 [后台任务] 订单 {order_id} {plan_name}产品生成完成！")
+    except Exception as e:
+        logger.error(f"插入产品数据失败: {e}")
+        raise HTTPException(500, detail="创建产品失败")
+    return 
