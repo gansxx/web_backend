@@ -2,6 +2,7 @@
 
 # Multi-stage build optimized for uv package manager
 # Base image with Python 3.12
+# 准备后期把一些不相关的文件夹加入.dockerignore
 ARG PYTHON_VERSION=3.12
 FROM python:${PYTHON_VERSION}-slim as base
 
