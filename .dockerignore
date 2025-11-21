@@ -81,6 +81,8 @@
 **/*.tmp
 
 # Configuration examples (keep actual .env for production)
+# .env will be set in the cloud var rather than set local for multi environment deployment
+**/.env
 **/.env.example
 **/.env.*.example
 **/.env.local
@@ -119,3 +121,5 @@
 # Supabase local files
 **/supabase/.temp
 **/supabase/.branches
+
+todo.md

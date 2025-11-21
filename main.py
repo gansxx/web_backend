@@ -37,10 +37,6 @@ if not SUPABASE_ANON_KEY:
     raise ValueError("ANON_KEY environment variable is required")
 
 # 安全日志：仅显示密钥的一部分
-# logger.info(f"✅ SUPABASE_URL: {SUPABASE_URL}")
-# logger.info(f"✅ ANON_KEY (first 30 chars): {SUPABASE_ANON_KEY[:30]}...")
-# logger.info(f"✅ ANON_KEY contains 'sqkaaiqnbaebuuntdqvu': {'sqkaaiqnbaebuuntdqvu' in SUPABASE_ANON_KEY}")
-# logger.info(f"✅ ANON_KEY is NOT demo key: {'supabase-demo' not in SUPABASE_ANON_KEY}")
 
 # CORS允许的前端地址列表
 # 从环境变量读取，支持逗号分隔的多个域名
@@ -54,17 +50,17 @@ ALLOWED_ORIGINS = [url.strip() for url in ALLOWED_FRONTEND_ORIGINS_ENV.split(','
 # 主要前端URL（用于Cookie域配置等）
 # 取ALLOWED_ORIGINS列表的第一个作为主要前端
 FRONTEND_URL = ALLOWED_ORIGINS[0] if ALLOWED_ORIGINS else 'http://localhost:3000'
-
+logger.info(f"gateway_ip:{os.getenv("gateway_ip")}")
+logger.info(f"advanced_gateway_ip:{os.getenv("advanced_gateway_ip")}")
+logger.info(f"unlimited_gateway_ip:{os.getenv("unlimited_gateway_ip")}")
 logger.info(f"SUPABASE_URL: {SUPABASE_URL}")
-# # logger.info(f"ANON_KEY:{SUPABASE_ANON_KEY}")
-# logger.info(f"PRIMARY_FRONTEND_URL: {FRONTEND_URL}")
+
 logger.info(f"ALLOWED_ORIGINS: {ALLOWED_ORIGINS}")
 service_role_key_env = os.getenv('SERVICE_ROLE_KEY')
 masked_service = (
     service_role_key_env[:6] + "..." + service_role_key_env[-6:]
     if service_role_key_env and len(service_role_key_env) > 12 else ("MISSING" if not service_role_key_env else "MASKED")
 )
-# logger.info(f"SERVICE_ROLE_KEY: {masked_service}")
 
 # 依据 FRONTEND_URL 推导 Cookie 域与安全策略,parse
 ALLOWED_FRONTEND_ORIGINS_host=os.getenv('ALLOWED_FRONTEND_ORIGINS_host')
@@ -235,7 +231,7 @@ app.add_middleware(
 try:
     from routes.user_data import router as user_data_router
     app.include_router(user_data_router)
-    logger.info("routes.user_data 已注册")
+    # logger.info("routes.user_data 已注册")
 except Exception as _e:
     logger.error(f"注册 routes.user_data 失败: {_e}")
 
@@ -243,7 +239,7 @@ except Exception as _e:
 try:
     from routes.auth import router as auth_router
     app.include_router(auth_router)
-    logger.info("routes.auth 已注册")
+    # logger.info("routes.auth 已注册")
 except Exception as _e:
     logger.error(f"注册 routes.auth 失败: {_e}")
 
@@ -251,7 +247,7 @@ except Exception as _e:
 try:
     from routes.free_plan import router as free_plan_router
     app.include_router(free_plan_router)
-    logger.info("routes.free_plan 已注册")
+    # logger.info("routes.free_plan 已注册")
 except Exception as _e:
     logger.error(f"注册 routes.free_plan 失败: {_e}")
 
@@ -259,7 +255,7 @@ except Exception as _e:
 try:
     from routes.ticket import router as ticket_router
     app.include_router(ticket_router)
-    logger.info("routes.ticket 已注册")
+    # logger.info("routes.ticket 已注册")
 except Exception as _e:
     logger.error(f"注册 routes.ticket 失败: {_e}")
 
@@ -267,14 +263,14 @@ except Exception as _e:
 try:
     from routes.r2_packages import router as r2_packages_router
     app.include_router(r2_packages_router)
-    logger.info("routes.r2_packages 已注册")
+    # logger.info("routes.r2_packages 已注册")
 except Exception as _e:
     logger.error(f"注册 routes.r2_packages 失败: {_e}")
 
 try:
     from routes.advanced_plan import router as advanced_plan_router
     app.include_router(advanced_plan_router)
-    logger.info("routes.advanced_plan 已注册")
+    # logger.info("routes.advanced_plan 已注册")
 except Exception as _e:
     logger.error(f"注册 routes.advanced_plan 失败: {_e}")
 
@@ -282,7 +278,7 @@ except Exception as _e:
 try:
     from routes.unlimited_plan import router as unlimited_plan_router
     app.include_router(unlimited_plan_router)
-    logger.info("routes.unlimited_plan 已注册")
+    # logger.info("routes.unlimited_plan 已注册")
 except Exception as _e:
     logger.error(f"注册 routes.unlimited_plan 失败: {_e}")
     
@@ -296,7 +292,7 @@ except Exception as _e:
 try:
     from routes.stripe_webhook import router as stripe_webhook
     app.include_router(stripe_webhook)
-    logger.info("stripe_webhook 已注册")
+    # logger.info("stripe_webhook 已注册")
 except Exception as _e:
     logger.error(f"注册 stripe_webhook 失败: {_e}")
 

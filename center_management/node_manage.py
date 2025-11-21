@@ -167,12 +167,14 @@ def run_add_user_v3(proxy, name_arg=None, alias=None,up_mbps=None,down_mbps=None
     hy2_link = None
 
     if out and out.strip():
-        # 尝试提取 hysteria2 链接
+        # 提取所有 hysteria2 链接（可能有多个）
         # 格式: hysteria2://password@server:port?...
-        link_match = re.search(r"hysteria2://[A-Za-z0-9\-._~%:@/?&=+#]+", out)
-        if link_match:
-            hy2_link = link_match.group(0)
+        links = re.findall(r"hysteria2://[A-Za-z0-9\-._~%:@/?&=+#]+", out)
+        if links:
+            # 聚合所有链接为一个字符串（换行符分隔）
+            hy2_link = '\n'.join(links)
             result['share_link'] = hy2_link
+            result['link_count'] = len(links)
 
         # 尝试提取端口号
         # 格式: "✓ Allocated port: 28282"

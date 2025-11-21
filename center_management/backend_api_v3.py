@@ -225,21 +225,26 @@ def test_add_user_v3(proxy, name_arg='test_user_3@example.com', url=None, alias=
             )
 
             logger.debug(f"Exit status: {exit_status}")
-            logger.debug(f"HY2 link: {hy2_link}")
+            logger.debug(f"HY2 link(s): {hy2_link}")
 
             if exit_status == 0 and hy2_link:
-                # 提取端口号（用于日志）
+                # 提取链接数量和端口号（用于日志）
+                link_count = result.get('link_count', 1) if isinstance(result, dict) else 1
+                logger.info(f"✅ 获取到 {link_count} 个链接")
+
                 selected_port = result.get('port') if isinstance(result, dict) else None
                 if selected_port:
                     logger.info(f"✅ 远程分配端口: {selected_port}")
                 else:
                     logger.warning("⚠️ 无法从结果中提取端口号")
 
-                # 链接验证
+                # 链接验证（只验证第一个链接）
                 verification_success = True
                 if verify_link:
-                    logger.info("开始验证链接...")
-                    verification_success = verify_hy2_link_simple(hy2_link)
+                    logger.info("开始验证链接（只验证第一个）...")
+                    # 从聚合字符串中提取第一个链接
+                    first_link = hy2_link.split('\n')[0].strip() if '\n' in hy2_link else hy2_link
+                    verification_success = verify_hy2_link_simple(first_link)
 
                     if verification_success:
                         logger.info("✅ 链接验证通过")
@@ -256,14 +261,25 @@ def test_add_user_v3(proxy, name_arg='test_user_3@example.com', url=None, alias=
                             return None
 
                 # 链接处理（URL 和别名替换）
-                processed_link = _modify_hysteria2_link(hy2_link, url, alias)
+                # 处理所有链接
+                links = hy2_link.split('\n') if '\n' in hy2_link else [hy2_link]
+                processed_links = []
+                for link in links:
+                    link = link.strip()
+                    if link:
+                        processed = _modify_hysteria2_link(link, url, alias)
+                        processed_links.append(processed)
+
+                # 重新聚合为字符串
+                processed_link = '\n'.join(processed_links)
 
                 # Phase 4: 成功返回
                 logger.info(f"{'='*50}")
                 logger.info(f"✅ 用户 {name_arg} 添加成功")
                 logger.info(f"✅ 分配端口: {selected_port}")
-                logger.info(f"✅ 原始链接: {hy2_link}")
-                logger.info(f"✅ 处理后链接: {processed_link}")
+                logger.info(f"✅ 链接数量: {len(processed_links)}")
+                logger.info(f"✅ 原始链接:\n{hy2_link}")
+                logger.info(f"✅ 处理后链接:\n{processed_link}")
 
                 # 执行时间记录
                 end_time = time.perf_counter()
