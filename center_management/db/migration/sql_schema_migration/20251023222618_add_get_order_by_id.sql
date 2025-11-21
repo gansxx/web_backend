@@ -6,7 +6,7 @@
 -- 执行方式：
 --   psql "postgresql://postgres:$POSTGRES_PASSWORD@localhost:5438/postgres" \
 --     -v ON_ERROR_STOP=1 \
---     -f center_management/db/migration/sql_schema_migration/13_add_get_order_by_id.sql
+--     -f supabase/migrations/13_add_get_order_by_id.sql
 -- =====================================================
 
 -- 创建 get_order_by_id 函数

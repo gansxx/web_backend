@@ -235,7 +235,7 @@ def main():
     logger.info("   source .env")
     logger.info('   psql "postgresql://postgres:$POSTGRES_PASSWORD@localhost:5438/postgres" \\')
     logger.info("     -v ON_ERROR_STOP=1 \\")
-    logger.info("     -f center_management/db/migration/sql_schema_migration/12_stripe_integration.sql")
+    logger.info("     -f supabase/migrations/12_stripe_integration.sql")
     logger.info("3. 使用 Stripe CLI 测试 Webhook:")
     logger.info(f"   stripe listen --forward-to {API_BASE_URL}/stripe/webhook")
     logger.info("4. 在前端集成 Stripe.js 和 Payment Element")

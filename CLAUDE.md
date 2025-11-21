@@ -83,10 +83,10 @@ psql "postgresql://postgres:$POSTGRES_PASSWORD@localhost:5438/postgres" -v ON_ER
 
 # Run migrations from sql_schema_migration directory
 # For migrations that require table ownership changes (e.g., 11_fix_table_ownership.sql):
-PGPASSWORD=$POSTGRES_PASSWORD psql -U supabase_admin -h localhost -p 5438 -d postgres -v ON_ERROR_STOP=1 -f center_management/db/migration/sql_schema_migration/11_fix_table_ownership.sql
+PGPASSWORD=$POSTGRES_PASSWORD psql -U supabase_admin -h localhost -p 5438 -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/11_fix_table_ownership.sql
 
 # For regular migrations (as postgres user):
-psql "postgresql://postgres:$POSTGRES_PASSWORD@localhost:5438/postgres" -v ON_ERROR_STOP=1 -f center_management/db/migration/sql_schema_migration/12_stripe_integration.sql
+psql "postgresql://postgres:$POSTGRES_PASSWORD@localhost:5438/postgres" -v ON_ERROR_STOP=1 -f supabase/migrations/12_stripe_integration.sql
 
 # Run all pending migrations (from migration script)
 # Note: Some migrations may require supabase_admin privileges
@@ -175,7 +175,7 @@ Advantages:
 
 See [heartbeat_standalone/README.md](heartbeat_standalone/README.md) for complete documentation.
 
-### Database Migrations (`center_management/db/migration/sql_schema_migration`)
+### Database Migrations (`supabase/migrations`)
 All database changes must be managed through migration files in this directory.
 
 #### SQL Migration File Writing Rules
@@ -278,7 +278,7 @@ DASHBOARD_PASSWORD
 
 1. **Database Changes**:
    - Implement and test SQL locally in dev database
-   - Place migration SQL files in `center_management/db/migration/sql_schema_migration/`
+   - Place migration SQL files in `supabase/migrations/`
    - Test migrations by running them with psql (see Database Management commands)
    - Verify changes with database tests
 

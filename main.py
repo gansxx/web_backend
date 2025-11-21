@@ -14,19 +14,11 @@ from center_management.db.order import OrderConfig
 from center_management.db.ticket import TicketConfig
 
 # 加载环境变量 - 先检查环境变量，再尝试从.env文件加载
-# logger.info("=== 🔍 Environment Variable Debug START ===")
-# logger.info(f"Before load_dotenv():")
-# logger.info(f"  SUPABASE_URL: {os.getenv('SUPABASE_URL')}")
-# logger.info(f"  ANON_KEY: {os.getenv('ANON_KEY')[:30] if os.getenv('ANON_KEY') else 'None'}...")
-# logger.info(f"  SERVICE_ROLE_KEY: {os.getenv('SERVICE_ROLE_KEY')[:30] if os.getenv('SERVICE_ROLE_KEY') else 'None'}...")
-
 load_dotenv()
+#临时本地开发时切换环境
+# load_dotenv('.env.docker', override=True)
 
-# logger.info(f"After load_dotenv():")
-# logger.info(f"  SUPABASE_URL: {os.getenv('SUPABASE_URL')}")
-# logger.info(f"  ANON_KEY: {os.getenv('ANON_KEY')[:30] if os.getenv('ANON_KEY') else 'None'}...")
-# logger.info(f"  SERVICE_ROLE_KEY: {os.getenv('SERVICE_ROLE_KEY')[:30] if os.getenv('SERVICE_ROLE_KEY') else 'None'}...")
-# logger.info("=== 🔍 Environment Variable Debug END ===")
+
 
 app = FastAPI(title="Supabase Login Demo")
 
@@ -279,16 +271,6 @@ try:
 except Exception as _e:
     logger.error(f"注册 routes.r2_packages 失败: {_e}")
 
-# 注册 Stripe 支付路由
-#不再注册stripe路由（此路由暂时废弃，日后删除）
-# try:
-#     from routes.stripe_routes import router as stripe_router
-#     app.include_router(stripe_router)
-#     logger.info("routes.stripe_routes 已注册")
-# except Exception as _e:
-#     logger.error(f"注册 routes.stripe_routes 失败: {_e}")
-
-# 注册 advanced_plan 路由
 try:
     from routes.advanced_plan import router as advanced_plan_router
     app.include_router(advanced_plan_router)
@@ -306,7 +288,7 @@ except Exception as _e:
     
 # # 注册 test 路由
 # try:
-#     from routes.t_read_j import router as test_router
+#     from routes.test_web import router as test_router
 #     app.include_router( test_router)
 #     logger.info("routes. test_router 已注册")
 # except Exception as _e:

@@ -23,7 +23,7 @@ center_management/r2_storage/
 center_management/db/
 └── r2_package.py              # Database operations (CRUD, queries)
 
-center_management/db/migration/sql_schema_migration/
+supabase/migrations/
 └── r2_package_system.sql      # Database schema and functions
 ```
 
@@ -59,7 +59,7 @@ R2_BUCKET_NAME=software-packages
 source .env
 psql "postgresql://postgres:$POSTGRES_PASSWORD@localhost:5438/postgres" \
   -v ON_ERROR_STOP=1 \
-  -f center_management/db/migration/sql_schema_migration/r2_package_system.sql
+  -f supabase/migrations/r2_package_system.sql
 ```
 
 ### 3. Start Backend

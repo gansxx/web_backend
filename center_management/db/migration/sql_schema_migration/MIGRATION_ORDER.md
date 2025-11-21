@@ -52,13 +52,13 @@ All migration files follow the naming convention: `YYYYMMDDHHmmss_description.sq
 ### Using psql (postgres user)
 ```bash
 source .env
-psql "postgresql://postgres:$POSTGRES_PASSWORD@localhost:5438/postgres" -v ON_ERROR_STOP=1 -f center_management/db/migration/sql_schema_migration/[migration_file].sql
+psql "postgresql://postgres:$POSTGRES_PASSWORD@localhost:5438/postgres" -v ON_ERROR_STOP=1 -f supabase/migrations/[migration_file].sql
 ```
 
 ### Using psql (supabase_admin user) - for ownership migrations
 ```bash
 source .env
-PGPASSWORD=$POSTGRES_PASSWORD psql -U supabase_admin -h localhost -p 5438 -d postgres -v ON_ERROR_STOP=1 -f center_management/db/migration/sql_schema_migration/[migration_file].sql
+PGPASSWORD=$POSTGRES_PASSWORD psql -U supabase_admin -h localhost -p 5438 -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/[migration_file].sql
 ```
 
 ## Migration Tracking

@@ -87,7 +87,7 @@ source .env
 psql "postgresql://postgres:$POSTGRES_PASSWORD@localhost:5438/postgres" \
   -v ON_ERROR_STOP=1 \
   -1 \
-  -f center_management/db/migration/sql_schema_migration/ticket_system.sql
+  -f supabase/migrations/ticket_system.sql
 ```
 
 ### 方式 2: 分步执行
@@ -97,7 +97,7 @@ psql "postgresql://postgres:$POSTGRES_PASSWORD@localhost:5438/postgres" \
 psql "postgresql://postgres:$POSTGRES_PASSWORD@localhost:5438/postgres"
 
 # 2. 在 psql 中执行
-\i center_management/db/migration/sql_schema_migration/ticket_system.sql
+\i supabase/migrations/ticket_system.sql
 ```
 
 ## 验证迁移
@@ -256,7 +256,7 @@ uv run python test_ticket_api.py
 psql "postgresql://..." -v ON_ERROR_STOP=1 -1 -f supabase/migrations/order_refactored.sql
 
 # 再执行 ticket_system.sql
-psql "postgresql://..." -v ON_ERROR_STOP=1 -1 -f center_management/db/migration/sql_schema_migration/ticket_system.sql
+psql "postgresql://..." -v ON_ERROR_STOP=1 -1 -f supabase/migrations/ticket_system.sql
 ```
 
 ### 问题: "Invalid priority value"

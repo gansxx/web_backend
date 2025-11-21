@@ -48,7 +48,7 @@ source .env
 # Run R2 package system migration
 psql "postgresql://postgres:$POSTGRES_PASSWORD@localhost:5438/postgres" \
   -v ON_ERROR_STOP=1 \
-  -f center_management/db/migration/sql_schema_migration/r2_package_system.sql
+  -f supabase/migrations/r2_package_system.sql
 ```
 
 Expected output:
@@ -234,7 +234,7 @@ psql "postgresql://postgres:$POSTGRES_PASSWORD@localhost:5438/postgres" \
 
 # Re-run migration if needed
 psql "postgresql://postgres:$POSTGRES_PASSWORD@localhost:5438/postgres" \
-  -f center_management/db/migration/sql_schema_migration/r2_package_system.sql
+  -f supabase/migrations/r2_package_system.sql
 ```
 
 ## Next Steps

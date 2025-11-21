@@ -117,7 +117,7 @@ ssh user@remote-server "cd /path/to/project && \
 source .env
 psql "postgresql://postgres:$POSTGRES_PASSWORD@localhost:5438/postgres" \
   -v ON_ERROR_STOP=1 \
-  -f center_management/db/migration/sql_schema_migration/<文件名>.sql
+  -f supabase/migrations/<文件名>.sql
 ```
 
 ## 重要提醒

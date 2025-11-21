@@ -58,7 +58,7 @@ web_backend/
 │   └── payment_factory.py      # 新增：支付工厂路由器
 ├── routes/
 │   └── stripe_routes.py        # 新增：Stripe API 端点
-├── center_management/db/migration/sql_schema_migration/
+├── supabase/migrations/
 │   └── 12_stripe_integration.sql  # 数据库迁移
 ├── test_stripe_payment.py      # 集成测试脚本
 ├── .env                        # 环境配置（包含 Stripe 密钥）
@@ -102,7 +102,7 @@ source .env
 
 psql "postgresql://postgres:$POSTGRES_PASSWORD@localhost:5438/postgres" \
   -v ON_ERROR_STOP=1 \
-  -f center_management/db/migration/sql_schema_migration/12_stripe_integration.sql
+  -f supabase/migrations/12_stripe_integration.sql
 ```
 
 **迁移内容:**
@@ -574,7 +574,7 @@ SUPABASE_ANON_KEY=your_production_anon_key
 ```bash
 psql "$PRODUCTION_DATABASE_URL" \
   -v ON_ERROR_STOP=1 \
-  -f center_management/db/migration/sql_schema_migration/12_stripe_integration.sql
+  -f supabase/migrations/12_stripe_integration.sql
 ```
 
 ### 监控与告警
