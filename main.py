@@ -312,7 +312,80 @@ class ResetPasswordRequest(BaseModel):
     code: str  # 验证码
     new_password: str  # 新密码
 
-# 健康检查端点
+# 健康检查端点（包含数据库连接状态）
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "timestamp": "2025-01-27T12:00:00Z"}
+    import time
+    from datetime import datetime, timezone
+    from typing import Any, Dict
+
+    # 初始化响应
+    response: Dict[str, Any] = {
+        "status": "healthy",
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
+    # 检查数据库连接
+    db_status: Dict[str, Any] = {
+        "status": "unknown",
+        "supabase_url": SUPABASE_URL or ""
+    }
+
+    try:
+        # 调用 Supabase health endpoint with authorization
+        start_time = time.time()
+        supabase_url_str = SUPABASE_URL or ""
+        health_url = f"{supabase_url_str.rstrip('/')}/health"
+
+        # 添加授权头
+        headers = {
+            "apikey": SUPABASE_ANON_KEY or "",
+            "Authorization": f"Bearer {SUPABASE_ANON_KEY or ""}"
+        }
+
+        health_response = requests.get(health_url, headers=headers, timeout=5)
+        response_time_ms = int((time.time() - start_time) * 1000)
+
+        if health_response.status_code == 200:
+            db_status["status"] = "connected"
+            db_status["response_time_ms"] = response_time_ms
+            logger.info(f"✅ 数据库健康检查成功: 响应时间 {response_time_ms}ms")
+        else:
+            db_status["status"] = "unavailable"
+            db_status["http_status"] = health_response.status_code
+            response["status"] = "degraded"
+            logger.warning(f"⚠️ 数据库健康检查失败: HTTP {health_response.status_code}")
+
+    except requests.exceptions.Timeout:
+        db_status["status"] = "timeout"
+        db_status["error"] = "Connection timeout (5s)"
+        response["status"] = "degraded"
+        logger.warning(f"⚠️ 数据库健康检查超时: {supabase_url_str}")
+
+    except requests.exceptions.ConnectionError as e:
+        db_status["status"] = "unreachable"
+        db_status["error"] = f"Connection failed: {str(e)}"
+        response["status"] = "degraded"
+        logger.warning(f"⚠️ 数据库连接失败: {supabase_url_str} - {e}")
+
+    except Exception as e:
+        db_status["status"] = "error"
+        db_status["error"] = str(e)
+        response["status"] = "degraded"
+        logger.error(f"❌ 数据库健康检查异常: {e}")
+
+    response["database"] = db_status
+    return response
+
+# 启动时执行数据库健康检查
+import asyncio
+
+logger.info("🚀 应用启动中，执行数据库健康检查...")
+try:
+    startup_result = asyncio.run(health_check())
+    if startup_result.get("status") == "healthy":
+        logger.info("✅ 启动健康检查通过，数据库连接正常")
+    else:
+        logger.warning(f"⚠️ 启动健康检查显示降级状态: {startup_result.get('database', {}).get('status')}")
+except Exception as e:
+    logger.error(f"❌ 启动健康检查失败: {e}")

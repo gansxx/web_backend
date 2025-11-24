@@ -1,0 +1,123 @@
+-- =====================================================
+-- Auth Users Signup Webhook Migration
+-- =====================================================
+-- 功能说明：
+--   监听 auth.users 表的 INSERT 事件，自动发送邮件通知
+--   使用 Supabase Edge Function (resend-email) 发送邮件
+--
+-- 前置依赖：
+--   1. Edge Function resend-email 已部署
+--   2. 环境变量 SUPABASE_URL 和 ANON_KEY 已配置
+--
+-- 创建日期：2025-11-24
+-- =====================================================
+-- 该sql还未测试
+-- 1. 启用 pg_net 扩展（用于异步 HTTP 请求）
+-- CREATE EXTENSION IF NOT EXISTS pg_net;
+
+-- -- 2. 创建触发器函数：发送用户注册通知
+-- CREATE OR REPLACE FUNCTION notify_user_signup()
+-- RETURNS TRIGGER AS $$
+-- DECLARE
+--     webhook_url TEXT;
+--     anon_key TEXT;
+--     payload JSONB;
+--     request_id BIGINT;
+--     user_email TEXT;
+-- BEGIN
+--     -- 获取用户邮箱
+--     user_email := COALESCE(NEW.email, 'unknown');
+
+--     -- 从环境变量构建 Edge Function URL
+--     -- 注意：PostgreSQL 无法直接访问操作系统环境变量
+--     -- 需要通过 ALTER DATABASE 或 ALTER SYSTEM 设置的参数来获取
+--     -- 这里假设已通过 ALTER DATABASE postgres SET app.supabase_url = 'xxx' 设置
+--     BEGIN
+--         webhook_url := current_setting('app.supabase_url', true) || '/functions/v1/resend-email';
+--         anon_key := current_setting('app.anon_key', true);
+--     EXCEPTION
+--         WHEN OTHERS THEN
+--             RAISE WARNING 'Failed to get configuration: %. Skipping webhook notification.', SQLERRM;
+--             RETURN NEW;
+--     END;
+
+--     -- 验证配置
+--     IF webhook_url IS NULL OR webhook_url = '' OR anon_key IS NULL OR anon_key = '' THEN
+--         RAISE WARNING 'Webhook URL or ANON_KEY not configured. Skipping notification for user %', user_email;
+--         RETURN NEW;
+--     END IF;
+
+--     -- 构建 payload
+--     payload := jsonb_build_object(
+--         'type', 'INSERT',
+--         'table', 'users',
+--         'schema', 'auth',
+--         'record', jsonb_build_object(
+--             'id', NEW.id,
+--             'email', NEW.email,
+--             'phone', NEW.phone,
+--             'created_at', NEW.created_at,
+--             'confirmed_at', NEW.confirmed_at,
+--             'email_confirmed_at', NEW.email_confirmed_at,
+--             'last_sign_in_at', NEW.last_sign_in_at,
+--             'role', NEW.role
+--         ),
+--         'to', '1214250247@qq.com',
+--         'subject', '[Z加速] 新用户注册: ' || user_email
+--     );
+
+--     -- 发送异步 HTTP POST 请求
+--     SELECT INTO request_id net.http_post(
+--         url := webhook_url,
+--         body := payload,
+--         headers := jsonb_build_object(
+--             'Content-Type', 'application/json',
+--             'Authorization', 'Bearer ' || anon_key
+--         ),
+--         timeout_milliseconds := 5000
+--     );
+
+--     RAISE NOTICE 'Webhook notification sent for user %. Request ID: %', user_email, request_id;
+
+--     RETURN NEW;
+-- EXCEPTION
+--     WHEN OTHERS THEN
+--         -- 发生错误时记录警告，但不阻止用户注册
+--         RAISE WARNING 'Failed to send webhook notification for user %: %', user_email, SQLERRM;
+--         RETURN NEW;
+-- END;
+-- $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- -- 3. 删除旧触发器（如果存在）
+-- DROP TRIGGER IF EXISTS on_auth_user_signup ON auth.users;
+
+-- -- 4. 创建新触发器
+-- CREATE TRIGGER on_auth_user_signup
+--     AFTER INSERT ON auth.users
+--     FOR EACH ROW
+--     EXECUTE FUNCTION notify_user_signup();
+
+-- -- 5. 授予必要权限
+-- GRANT USAGE ON SCHEMA net TO service_role;
+-- GRANT EXECUTE ON FUNCTION notify_user_signup() TO service_role;
+-- GRANT EXECUTE ON FUNCTION notify_user_signup() TO postgres;
+
+-- -- 6. 验证配置提示
+-- DO $$
+-- BEGIN
+--     RAISE NOTICE '====================================================';
+--     RAISE NOTICE 'Auth User Signup Webhook installed successfully';
+--     RAISE NOTICE '====================================================';
+--     RAISE NOTICE 'Configuration required:';
+--     RAISE NOTICE '  Run the following commands to set configuration:';
+--     RAISE NOTICE '';
+--     RAISE NOTICE '  ALTER DATABASE postgres SET app.supabase_url = ''http://host.docker.internal:8000'';';
+--     RAISE NOTICE '  ALTER DATABASE postgres SET app.anon_key = ''YOUR_ANON_KEY_HERE'';';
+--     RAISE NOTICE '';
+--     RAISE NOTICE 'Then reload configuration:';
+--     RAISE NOTICE '  SELECT pg_reload_conf();';
+--     RAISE NOTICE '';
+--     RAISE NOTICE 'Target email: 1214250247@qq.com';
+--     RAISE NOTICE 'Subject format: [Z加速] 新用户注册: {email}';
+--     RAISE NOTICE '====================================================';
+-- END $$;
