@@ -1,9 +1,10 @@
+#todo:重构free_plan,去除冗余逻辑同时复用基本类
 from fastapi import APIRouter, HTTPException, Response, Request, Cookie,BackgroundTasks
 from loguru import logger
 from typing import Dict, Any, List
 from pydantic import BaseModel
 
-router = APIRouter(tags=["free_plan"])
+router = APIRouter(tags=["gift_plan"])
 
 
 def generate_trade_number() -> int:
@@ -19,175 +20,11 @@ class FreePlanResponse(BaseModel):
 
 class FreePlanPurchaseRequest(BaseModel):
     phone: str = ""
-    plan_id: str = "free"  # 套餐ID，默认为免费套餐
-    plan_name: str = "免费套餐"  # 套餐名称
-    duration_days: int = 30  # 套餐时长，默认30天
+    plan_id: str = "gift"  # 套餐ID，默认为免费套餐
+    plan_name: str = "礼品套餐"  # 套餐名称
+    duration_days: int = 90  # 套餐时长，默认30天
 
-
-@router.get("/user/free-plan")
-async def check_free_plan(
-    request: Request,
-    response: Response,
-    token: str | None = None,
-    access_token: str | None = Cookie(default=None),
-    refresh_token: str | None = Cookie(default=None),
-):
-    """检查用户是否拥有免费套餐，返回布尔值和详细信息"""
-    supabase = getattr(request.app.state, "supabase", None)
-    pd_db = getattr(request.app.state, "pd_db", None)
-    do_refresh = getattr(request.app.state, "refresh_session_and_set_cookies", None)
-
-    if not supabase:
-        raise HTTPException(500, detail="Supabase 未初始化")
-    if not pd_db:
-        raise HTTPException(500, detail="数据库未初始化")
-
-    token_to_use = token or access_token
-    #当前没有验证token,严重安全问题
-    if not token_to_use:
-        raise HTTPException(401, detail="未登录")
-
-    try:
-        # 获取用户信息
-        try:
-            _res = supabase.auth.get_user(token_to_use)
-        except Exception as e:
-            msg = str(e).lower()
-            if refresh_token and ("expired" in msg or "invalid" in msg) and callable(do_refresh):
-                logger.info("access_token 失效，尝试 refresh_token 刷新后重试 /user/free-plan")
-                new_at = do_refresh(response, refresh_token)
-                if not new_at:
-                    raise HTTPException(401, detail="登录已过期，请重新登录")
-                _res = supabase.auth.get_user(new_at)
-            else:
-                raise
-
-        user = getattr(_res, "user", None)
-        if not user or not getattr(user, "email", None):
-            raise HTTPException(401, detail="未登录或用户无邮箱信息")
-
-        email = user.email
-        if not isinstance(email, str) or not email:
-            raise HTTPException(401, detail="未登录或用户无邮箱信息")
-
-        logger.info(f"检查用户免费套餐: {email}")
-
-        # 调用 fetch_product_user 获取用户产品数据
-        from center_management.db.product import ProductConfig
-        product_config = ProductConfig()
-        user_products = product_config.fetch_product_user(user_email=email)
-
-        if not user_products:
-            return {
-                "has_free_plan": False,
-                "free_plans": [],
-                "all_products": []
-            }
-
-        # 检查是否有免费套餐
-        free_plans = []
-        all_products = []
-
-        for product in user_products:
-            all_products.append(product)
-
-            # 检查 subscription_url 中是否包含免费套餐
-            if isinstance(product, dict):
-                subscription_url = product.get("subscription_url", "")
-                if subscription_url and "free" in str(subscription_url).lower():
-                    free_plans.append(product)
-
-        has_free_plan = len(free_plans) > 0
-
-        logger.info(f"用户 {email} 免费套餐检查结果: {has_free_plan}, 找到 {len(free_plans)} 个免费套餐")
-
-        return {
-            "has_free_plan": has_free_plan,
-            "free_plans": free_plans,
-            "all_products": all_products
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"检查用户免费套餐失败: {e}")
-        raise HTTPException(500, detail="查询失败")
-
-
-@router.get("/user/free-plan/simple")
-async def check_free_plan_simple(
-    request: Request,
-    response: Response,
-    token: str | None = None,
-    access_token: str | None = Cookie(default=None),
-    refresh_token: str | None = Cookie(default=None),
-):
-    """简化版本：仅返回布尔值表示用户是否有免费套餐"""
-    supabase = getattr(request.app.state, "supabase", None)
-    pd_db = getattr(request.app.state, "pd_db", None)
-    do_refresh = getattr(request.app.state, "refresh_session_and_set_cookies", None)
-
-    if not supabase:
-        raise HTTPException(500, detail="Supabase 未初始化")
-    if not pd_db:
-        raise HTTPException(500, detail="数据库未初始化")
-
-    token_to_use = token or access_token
-    if not token_to_use:
-        raise HTTPException(401, detail="未登录")
-
-    try:
-        # 获取用户信息
-        try:
-            _res = supabase.auth.get_user(token_to_use)
-        except Exception as e:
-            msg = str(e).lower()
-            if refresh_token and ("expired" in msg or "invalid" in msg) and callable(do_refresh):
-                logger.info("access_token 失效，尝试 refresh_token 刷新后重试 /user/free-plan/simple")
-                new_at = do_refresh(response, refresh_token)
-                if not new_at:
-                    raise HTTPException(401, detail="登录已过期，请重新登录")
-                _res = supabase.auth.get_user(new_at)
-            else:
-                raise
-
-        user = getattr(_res, "user", None)
-        if not user or not getattr(user, "email", None):
-            raise HTTPException(401, detail="未登录或用户无邮箱信息")
-
-        email = user.email
-        if not isinstance(email, str) or not email:
-            raise HTTPException(401, detail="未登录或用户无邮箱信息")
-
-        logger.info(f"简化检查用户免费套餐: {email}")
-
-        # 调用 fetch_product_user 获取用户产品数据
-        from center_management.db.product import ProductConfig
-        product_config = ProductConfig()
-        user_products = product_config.fetch_product_user(user_email=email)
-
-        if not user_products:
-            return {"has_free_plan": False}
-
-        # 检查是否有免费套餐
-        for product in user_products:
-            if isinstance(product, dict):
-                subscription_url = product.get("subscription_url", "")
-                if subscription_url and "free" in str(subscription_url).lower():
-                    logger.info(f"用户 {email} 拥有免费套餐")
-                    return {"has_free_plan": True}
-
-        logger.info(f"用户 {email} 没有免费套餐")
-        return {"has_free_plan": False}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"检查用户免费套餐失败: {e}")
-        raise HTTPException(500, detail="查询失败")
-
-
-@router.post("/user/free-plan/purchase")
+@router.post("/user/gift-plan/purchase")
 async def purchase_free_plan(
     request: Request,
     response: Response,
@@ -236,18 +73,18 @@ async def purchase_free_plan(
 
         logger.info(f"用户 {email} 开始购买套餐: {purchase_data.plan_name}")
 
-        # 1. 检查用户是否已有免费套餐（仅针对免费套餐）
-        if purchase_data.plan_id == "free":
+        # 1. 检查用户是否已有礼品套餐（仅针对礼品套餐）
+        if purchase_data.plan_id == "gift":
             from center_management.db.product import ProductConfig
             product_config = ProductConfig()
             user_products = product_config.fetch_product_user(user_email=email)
 
             for product in user_products:
                 if isinstance(product, dict):
-                    subscription_url = product.get("subscription_url", "")
-                    if subscription_url and "free" in str(subscription_url).lower():
-                        logger.warning(f"用户 {email} 已有免费套餐，拒绝购买")
-                        raise HTTPException(400, detail="您已经拥有免费套餐，无法重复购买")
+                    product_name = product.get("product_name", "")
+                    if product_name and "礼品套餐" in str(product_name).lower():
+                        logger.warning(f"用户 {email} 已有礼品套餐，拒绝购买")
+                        raise HTTPException(400, detail="您已经拥有礼品套餐，无法重复购买")
 
         # 2. 生成交易号
         trade_num = generate_trade_number()
@@ -263,7 +100,7 @@ async def purchase_free_plan(
                 amount=0,  # 免费套餐金额为0
                 email=email,
                 phone=purchase_data.phone,
-                payment_provider="free"  # 免费套餐标识
+                payment_provider=purchase_data.plan_id  # 免费套餐标识
             )
             logger.info(f"订单插入成功，订单ID: {order_id}, 支付方式: free")
         except Exception as e:
@@ -303,7 +140,7 @@ async def purchase_free_plan(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"购买免费套餐失败: {e}")
+        logger.error(f"购买礼品套餐失败: {e}")
         raise HTTPException(500, detail="购买失败")
     
 async def free_product_background(
@@ -342,7 +179,7 @@ async def free_product_background(
             proxy,
             name_arg=email,
             url='jiasu.selfgo.asia',
-            alias='free_plan',
+            alias='gift_plan',
             verify_link=True,
             max_retries=1,
             up_mbps=20,

@@ -134,7 +134,7 @@ async def generate_product_background(
         from center_management.db.product import ProductConfig
         from center_management.backend_api_v3 import test_add_user_v3
         from center_management.node_manage import NodeProxy
-        from routes.base_plan import  PlanConfig
+        from routes.plans.base_plan import  PlanConfig
         import json
         from pathlib import Path
 

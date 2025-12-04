@@ -57,13 +57,15 @@ def _modify_hysteria2_link(hy2_link, url=None, alias=None):
             logger.debug(f"链接 IP 已替换为: {url}")
 
         # 替换别名
+        # 别名默认在边缘节点确认为官网地址，方便用户回源官网
         if alias:
             # 移除旧别名（如果存在）
             if '#' in modified_link:
                 modified_link = modified_link.split('#')[0]
             # 添加新别名
-            modified_link = f"{modified_link}#{alias}"
-            logger.debug(f"链接别名已替换为: {alias}")
+            front_name="官网地址:go.superjiasu.top"
+            modified_link = f"{modified_link}#{front_name}"
+            logger.debug(f"链接别名已替换为: {front_name}")
 
     except Exception as e:
         logger.error(f"修改 hysteria2 链接失败: {e}")

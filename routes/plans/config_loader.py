@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 from typing import Dict, Optional
 from loguru import logger
-from routes.base_plan import PlanConfig
+from routes.plans.base_plan import PlanConfig
 
 
 # 配置缓存
@@ -37,7 +37,7 @@ def load_plan_config(plan_id: str, force_reload: bool = False) -> PlanConfig:
         return _config_cache[plan_id]
 
     # 构建配置文件路径
-    config_path = Path(__file__).resolve().parent.parent / 'data' / 'products' / f'{plan_id}.json'
+    config_path = Path(__file__).resolve().parent.parent.parent / 'data' / 'products' / f'{plan_id}.json'
 
     # 检查文件是否存在
     if not config_path.exists():

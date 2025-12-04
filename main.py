@@ -199,7 +199,7 @@ except Exception as e:
 try:
     from center_management.r2_storage import PackageManager
     package_manager = PackageManager()
-    logger.info("R2 PackageManager 初始化成功")
+    # logger.info("R2 PackageManager 初始化成功")
 except Exception as e:
     logger.error(f"初始化 PackageManager 失败: {e}")
     package_manager = None
@@ -245,7 +245,7 @@ except Exception as _e:
 
 # 注册 free_plan 路由
 try:
-    from routes.free_plan import router as free_plan_router
+    from routes.plans.free_plan import router as free_plan_router
     app.include_router(free_plan_router)
     # logger.info("routes.free_plan 已注册")
 except Exception as _e:
@@ -268,7 +268,7 @@ except Exception as _e:
     logger.error(f"注册 routes.r2_packages 失败: {_e}")
 
 try:
-    from routes.advanced_plan import router as advanced_plan_router
+    from routes.plans.advanced_plan import router as advanced_plan_router
     app.include_router(advanced_plan_router)
     # logger.info("routes.advanced_plan 已注册")
 except Exception as _e:
@@ -276,19 +276,19 @@ except Exception as _e:
 
 # 注册 unlimited_plan 路由
 try:
-    from routes.unlimited_plan import router as unlimited_plan_router
+    from routes.plans.unlimited_plan import router as unlimited_plan_router
     app.include_router(unlimited_plan_router)
     # logger.info("routes.unlimited_plan 已注册")
 except Exception as _e:
     logger.error(f"注册 routes.unlimited_plan 失败: {_e}")
     
-# # 注册 test 路由
-# try:
-#     from routes.test_web import router as test_router
-#     app.include_router( test_router)
-#     logger.info("routes. test_router 已注册")
-# except Exception as _e:
-#     logger.error(f"注册 routes. test_router 失败: {_e}")
+# 注册 gift_plan 路由
+try:
+    from routes.plans.gift_plan import router as gift_plan_router
+    app.include_router( gift_plan_router)
+    logger.info("routes.plans.gift_plan_router 已注册")
+except Exception as _e:
+    logger.error(f"注册 routes.plans.gift_plan_router 失败: {_e}")
 try:
     from routes.stripe_webhook import router as stripe_webhook
     app.include_router(stripe_webhook)

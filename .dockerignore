@@ -121,5 +121,10 @@
 # Supabase local files
 **/supabase/.temp
 **/supabase/.branches
+**/supabase
+/mess
+/deployment
+/scripts
+/.claude
 
 todo.md
