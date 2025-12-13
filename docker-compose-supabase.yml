@@ -79,7 +79,7 @@ services:
 
   auth:
     container_name: supabase-auth
-    image: supabase/gotrue:v2.177.0
+    image: supabase/gotrue:v2.183.0
     restart: unless-stopped
     healthcheck:
       test:
@@ -140,6 +140,12 @@ services:
 
       GOTRUE_EXTERNAL_PHONE_ENABLED: ${ENABLE_PHONE_SIGNUP}
       GOTRUE_SMS_AUTOCONFIRM: ${ENABLE_PHONE_AUTOCONFIRM}
+      GOTRUE_EXTERNAL_GOOGLE_ENABLED : true
+      GOTRUE_EXTERNAL_GOOGLE_CLIENT_ID : 765070619710-jmr67halbckak3rslmlr4et6f29143dl.apps.googleusercontent.com
+      GOTRUE_EXTERNAL_GOOGLE_SECRET : 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
+      GOTRUE_EXTERNAL_GOOGLE_SKIP_NONCE_CHECK : false
+      GOTRUE_EXTERNAL_GOOGLE_EMAIL_OPTIONAL : false
+      GOTRUE_EXTERNAL_GOOGLE_REDIRECT_URI : http://127.0.0.1:8001/auth/v1/callback
       # Uncomment to enable custom access token hook. Please see: https://supabase.com/docs/guides/auth/auth-hooks for full list of hooks and additional details about custom_access_token_hook
 
       # GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_ENABLED: "true"
