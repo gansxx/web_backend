@@ -142,7 +142,7 @@ def test_add_user_v3(proxy, name_arg='test_user_3@example.com', url=None, alias=
         proxy: NodeProxy 对象
         name_arg: 用户名参数
         url: 替换链接中 IP 地址的 URL（可选）
-        alias: 替换链接末尾别名的参数（可选）
+        alias: 用户套餐计划（必填）
         **kwargs: 其他参数
             - max_retries: 最大重试次数（默认: 3）
             - up_mbps: 上传带宽限制（默认: 50）

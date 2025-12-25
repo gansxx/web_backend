@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Response, Request, Cookie
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, EmailStr
 from supabase import create_client
 from loguru import logger
@@ -281,6 +281,118 @@ async def me(
     except Exception as e:
         logger.error(f"/me 获取用户失败: {e}")
         raise HTTPException(500, detail="查询失败")
+    
+# @router.post("/login/google")
+# async def Google_login(response: Response, request: Request):
+#     supabase = _require_supabase(request)
+#     response = supabase.auth.sign_in_with_oauth(
+#     {"provider": "google",
+#      token: response.credential,},
+    
+# )
+    
+
+@router.get("/google/url")
+async def google_oauth_url(request: Request):
+    """生成 Google OAuth URL (PKCE Flow)"""
+    _, _, _, FRONTEND_URL, _ = _get_helpers(request)
+    supabase = _require_supabase(request)
+
+    try:
+        # 使用 Supabase 的 OAuth URL 生成（PKCE Flow）
+        # Callback URL 指向后端
+        base_api_url=os.getenv('BACKEND_API_URL')
+        backend_callback_url = f"{base_api_url}/google/callback"
+
+        logger.info(f"[Google OAuth] 生成 OAuth URL, callback: {backend_callback_url}")
+
+        res = supabase.auth.sign_in_with_oauth({
+            "provider": "google",
+            "options": {
+                "redirect_to": backend_callback_url,
+                "query_params": {
+                    "access_type": "offline",
+                    "prompt": "consent",
+                },
+            },
+        })
+
+        oauth_url = getattr(res, "url", None)
+        if not oauth_url:
+            raise HTTPException(500, detail="无法生成 OAuth URL")
+
+        logger.info(f"[Google OAuth] OAuth URL 生成成功")
+        return {"url": oauth_url}
+
+    except Exception as e:
+        logger.error(f"[Google OAuth] 生成 URL 失败: {str(e)}")
+        raise HTTPException(500, detail=f"生成 Google OAuth URL 失败: {str(e)}")
+
+
+@router.get("/google/callback")
+async def google_oauth_callback(
+    request: Request,
+    response: Response,
+    code: str | None = None,
+    error: str | None = None,
+):
+    """处理 Google OAuth callback (PKCE Flow)"""
+    supabase = _require_supabase(request)
+    set_auth_cookies, _, _, FRONTEND_URL, _ = _get_helpers(request)
+
+    logger.info(f"[Google OAuth Callback] Received callback")
+    logger.info(f"[Google OAuth Callback] Code: {'✅ Present' if code else '❌ Missing'}")
+    logger.info(f"[Google OAuth Callback] Error: {error if error else 'None'}")
+
+    # 检查错误
+    if error:
+        logger.error(f"[Google OAuth Callback] OAuth error: {error}")
+        error_url = f"{FRONTEND_URL}/signin?error={error}"
+        return RedirectResponse(url=error_url, status_code=302)
+
+    # 检查 code
+    if not code:
+        logger.error("[Google OAuth Callback] Missing code parameter")
+        error_url = f"{FRONTEND_URL}/signin?error=missing_code"
+        return RedirectResponse(url=error_url, status_code=302)
+
+    try:
+        # 使用 Supabase 交换 code 为 session (PKCE Flow)
+        logger.info("[Google OAuth Callback] Exchanging code for session...")
+
+        exchange_res = supabase.auth.exchange_code_for_session({"auth_code": code})
+        session = getattr(exchange_res, "session", None)
+
+        if not session or not getattr(session, "access_token", None):
+            logger.error("[Google OAuth Callback] No session or access_token returned")
+            raise HTTPException(500, detail="未能获取会话信息")
+
+        logger.info(f"[Google OAuth Callback] Session obtained successfully")
+        logger.info(f"[Google OAuth Callback] User email: {session.user.email if hasattr(session, 'user') else 'N/A'}")
+
+        # 重定向到前端 dashboard
+        dashboard_url = f"{FRONTEND_URL}/dashboard"
+        logger.info(f"[Google OAuth Callback] Redirecting to: {dashboard_url}")
+
+        # 创建重定向响应
+        redirect_response = RedirectResponse(url=dashboard_url, status_code=302)
+
+        # 设置 cookies（与 /login 相同的逻辑）
+        if callable(set_auth_cookies):
+            set_auth_cookies(
+                redirect_response,
+                session.access_token,
+                session.refresh_token,
+                session.expires_in or 3600
+            )
+            logger.info("[Google OAuth Callback] Cookies set successfully")
+
+        return redirect_response
+
+    except Exception as e:
+        logger.error(f"[Google OAuth Callback] Error: {str(e)}")
+        error_url = f"{FRONTEND_URL}/signin?error={str(e)}"
+        return RedirectResponse(url=error_url, status_code=302)
 
 
 @router.post("/logout")

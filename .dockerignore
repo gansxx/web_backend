@@ -119,12 +119,17 @@
 **/.claude
 
 # Supabase local files
+# **代表任意深度的只要文件夹名匹配就排除
 **/supabase/.temp
 **/supabase/.branches
 **/supabase
 /mess
 /deployment
 /scripts
-/.claude
-
+/heartbeat_standalone
+/dev
+/claudedocs
+/center_management/cloud_pool_demo
+/tests
+sing-box.log
 todo.md
