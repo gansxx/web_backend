@@ -2,27 +2,213 @@ from pathlib import Path
 import shlex
 import re
 from loguru import logger
-import importlib
-import importlib.util
 import subprocess
 import paramiko
 import sqlite3
 import tempfile
 import os
+import time
 from contextlib import contextmanager
 
 
-# Robustly load vps_vultur_manage whether this module is imported as a package
-# or run from a notebook/script where relative imports fail.
-try:
-	# prefer normal import when running as package
-	vps_mod = importlib.import_module('vps_vultur_manage')
-except Exception:
-	# fallback: load by file path from the same directory
-	spec_path = Path(__file__).resolve().parent / 'vps_vultur_manage.py'
-	spec = importlib.util.spec_from_file_location('vps_vultur_manage', str(spec_path))
-	vps_mod = importlib.util.module_from_spec(spec)
-	spec.loader.exec_module(vps_mod)
+# ============================================================================
+# 已弃用：vps_vultur_manage 导入已移除（2025-12-26）
+# ============================================================================
+# SSH 函数已直接提取到此模块，以消除对 vps_vultur_manage 配置文件的依赖。
+# ============================================================================
+
+
+# ============================================================================
+# SSH Connection Helpers (Extracted from vps_vultur_manage.py)
+# ============================================================================
+# 提取日期：2025-12-26
+# 原始来源：vps_vultur_manage.py lines 126-324
+#
+# 这些函数是自包含的 SSH 工具，无外部配置依赖。
+# 提取原因：消除与 Vultr API 模块的耦合。
+#
+# 函数列表：
+#   - _load_private_key_try_all(): 多格式 SSH 密钥加载器
+#   - _ssh_connect(): 建立 SSH 连接
+#   - _execute_remote_command_with_client(): 在已有连接上执行命令
+# ============================================================================
+
+
+def _load_private_key_try_all(key_file):
+	"""Try to load the private key with multiple Paramiko key classes.
+
+	Returns a Paramiko PKey instance on success, or None if none could be loaded.
+	"""
+	if not key_file:
+		return None
+	key_classes = [
+		getattr(paramiko, 'RSAKey', None),
+		getattr(paramiko, 'Ed25519Key', None),
+		getattr(paramiko, 'ECDSAKey', None),
+		getattr(paramiko, 'DSSKey', None),
+	]
+	# If the key is in the new OpenSSH format, Paramiko's PKey parsers often
+	# fail with struct errors; detect and skip trying to parse such files so
+	# we can fall back to passing key_filename to ssh.connect().
+	try:
+		with open(key_file, 'r', encoding='utf-8', errors='ignore') as f:
+			head = f.read(512)
+			if 'BEGIN OPENSSH PRIVATE KEY' in head:
+				logger.debug(f"Key {key_file} appears to be OpenSSH private key format; skip PKey parsing")
+				return None
+	except Exception:
+		# couldn't read file; continue to attempt parse (will likely fail)
+		logger.debug(f"Could not read key file header: {key_file}")
+
+	for cls in key_classes:
+		if not cls:
+			continue
+		try:
+			return cls.from_private_key_file(key_file)
+		except Exception as e:
+			logger.debug(f"Key loader {cls.__name__} failed for {key_file}: {e}")
+	return None
+
+
+def _ssh_connect(hostname, port, username, key_file, timeout=30):
+	"""建立并返回一个 Paramiko SSHClient 已连接实例。
+
+	抛出异常时表示连接失败。
+	"""
+	ssh = paramiko.SSHClient()
+	ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+	pkey = None
+	if key_file:
+		pkey = _load_private_key_try_all(key_file)
+
+	connect_kwargs = {
+		'hostname': hostname,
+		'port': int(port) if port else 22,
+		'username': username,
+		'timeout': timeout,
+	}
+	if pkey:
+		logger.debug("Using parsed PKey for SSH")
+		connect_kwargs['pkey'] = pkey
+	else:
+		if key_file:
+			logger.debug(f"Using key_filename for SSH: {key_file}")
+			connect_kwargs['key_filename'] = key_file
+
+	ssh.connect(**connect_kwargs)
+	return ssh
+
+
+def _execute_remote_command_with_client(ssh_client, command, timeout=600, hostname=None):
+	"""使用已建立的SSH连接执行命令并返回 (exit_status, stdout, stderr).
+
+	Args:
+		ssh_client: 已连接的Paramiko SSHClient实例
+		command: 要执行的命令
+		timeout: 命令执行超时时间（秒）
+		hostname: 主机名（用于日志记录）
+	"""
+	start_ts = time.time()
+	# 打印将要执行的命令（做长度截断，避免日志过长）
+	_cmd_preview = command if isinstance(command, str) else str(command)
+	if len(_cmd_preview) > 200:
+		_cmd_preview = _cmd_preview[:200] + ' …(truncated)'
+
+	host_info = hostname or ssh_client.get_transport().getpeername()[0] if ssh_client.get_transport() else "unknown"
+	logger.info(f"[SSH] Exec on {host_info} -> {shlex.quote(_cmd_preview)}")
+
+	try:
+		transport = ssh_client.get_transport()
+		if not transport:
+			raise RuntimeError("SSH transport not available")
+		chan = transport.open_session()
+		# 显式经由 bash 执行，保证与交互式一致
+		chan.exec_command(f"/bin/bash -lc {shlex.quote(command)}")
+		chan.settimeout(1.0)
+
+		stdout_buf = []
+		stderr_buf = []
+
+		while True:
+			# 超时控制
+			if timeout and (time.time() - start_ts) > timeout:
+				try:
+					chan.close()
+				except Exception:
+					pass
+				raise TimeoutError(f"Remote command timed out after {timeout}s")
+
+			# 实时读取 STDOUT
+			try:
+				if chan.recv_ready():
+					data = chan.recv(4096)
+					if data:
+						text = data.decode('utf-8', errors='ignore')
+						stdout_buf.append(text)
+						for line in text.splitlines():
+							logger.info(f"[SSH][STDOUT] {line}")
+			except Exception:
+				pass
+
+			# 实时读取 STDERR
+			try:
+				if chan.recv_stderr_ready():
+					data_e = chan.recv_stderr(4096)
+					if data_e:
+						text_e = data_e.decode('utf-8', errors='ignore')
+						stderr_buf.append(text_e)
+						for line in text_e.splitlines():
+							logger.error(f"[SSH][STDERR] {line}")
+			except Exception:
+				pass
+
+			if chan.exit_status_ready():
+				break
+
+			time.sleep(0.05)
+
+		# 排空剩余数据
+		drain_deadline = time.time() + 1.0
+		while time.time() < drain_deadline:
+			drained = False
+			if chan.recv_ready():
+				data = chan.recv(4096)
+				if data:
+					text = data.decode('utf-8', errors='ignore')
+					stdout_buf.append(text)
+					for line in text.splitlines():
+						logger.info(f"[SSH][STDOUT] {line}")
+					drained = True
+			if chan.recv_stderr_ready():
+				data_e = chan.recv_stderr(4096)
+				if data_e:
+					text_e = data_e.decode('utf-8', errors='ignore')
+					stderr_buf.append(text_e)
+					for line in text_e.splitlines():
+						logger.error(f"[SSH][STDERR] {line}")
+					drained = True
+			if not drained:
+				break
+
+		try:
+			exit_status = chan.recv_exit_status()
+		except Exception:
+			exit_status = 0
+
+		out = ''.join(stdout_buf)
+		err = ''.join(stderr_buf)
+
+		duration = time.time() - start_ts
+		if exit_status == 0:
+			logger.info(f"[SSH] Done rc=0 in {duration:.1f}s on {host_info}")
+		else:
+			logger.error(f"[SSH] Failed rc={exit_status} in {duration:.1f}s on {host_info}")
+		return exit_status, out, err
+	except Exception as e:
+		duration = time.time() - start_ts
+		logger.error(f"[SSH] Exception on {host_info} after {duration:.1f}s: {e}")
+		return 255, '', str(e)
 
 
 class NodeProxy:
@@ -40,7 +226,7 @@ class NodeProxy:
 	def connect(self):
 		"""建立SSH连接"""
 		if not self._connected or not self._ssh_client:
-			self._ssh_client = vps_mod.ssh_connect(self.hostname, self.port, self.username, self.key_file, self.timeout)
+			self._ssh_client = _ssh_connect(self.hostname, self.port, self.username, self.key_file, self.timeout)
 			self._connected = True
 			logger.info(f"SSH连接已建立: {self.username}@{self.hostname}:{self.port}")
 		return self._ssh_client
@@ -61,7 +247,7 @@ class NodeProxy:
 		"""执行远程命令"""
 		if not self._connected or not self._ssh_client:
 			self.connect()
-		return vps_mod.execute_remote_command_with_client(self._ssh_client, command, timeout, self.hostname)
+		return _execute_remote_command_with_client(self._ssh_client, command, timeout, self.hostname)
 
 	def get_sftp_client(self):
 		"""获取SFTP客户端"""
