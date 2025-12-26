@@ -128,6 +128,121 @@ def verify_hy2_link_simple(hy2_link, timeout=60):
         return False
 
 
+def update_user(proxy, name_arg, days=30, **kwargs):
+    """更新用户到期时间功能（延长订阅）
+
+    核心功能：
+    - 调用 run_update_user() 更新远程服务器上用户的到期时间
+    - 简化的重试逻辑，信任远程脚本的更新操作
+    - 重试间隔 5 秒
+
+    参数:
+        proxy: NodeProxy 对象
+        name_arg: 用户邮箱地址
+        days: 延长天数（默认: 30）
+        **kwargs: 其他参数
+            - max_retries: 最大重试次数（默认: 3）
+            - retry_delay: 重试等待时间（秒，默认: 5）
+
+    返回:
+        dict: 更新结果字典，包含旧/新到期日期等信息，失败返回 None
+    """
+    # 记录函数开始时间
+    start_time = time.perf_counter()
+
+    logger.info("=== 用户到期时间更新 ===")
+    logger.info(f"用户名: {name_arg}")
+    logger.info(f"延长天数: {days}")
+
+    # Phase 1: 参数配置
+    default_kwargs = {
+        'max_retries': 3,
+        'retry_delay': 5
+    }
+    default_kwargs.update(kwargs)
+
+    max_retries = default_kwargs['max_retries']
+    retry_delay = default_kwargs['retry_delay']
+
+    logger.info(f"配置参数: max_retries={max_retries}, retry_delay={retry_delay}s")
+
+    # Phase 2: 重试循环
+    for retry in range(max_retries):
+        attempt = retry + 1
+        logger.info(f"{'='*50}")
+        logger.info(f"第 {attempt}/{max_retries} 次尝试...")
+
+        try:
+            # 调用 run_update_user
+            logger.info("调用 run_update_user()...")
+            exit_status, result, out, err = nmanage.run_update_user(
+                proxy=proxy,
+                name_arg=name_arg,
+                days=days
+            )
+
+            logger.debug(f"Exit status: {exit_status}")
+            logger.debug(f"Result: {result}")
+
+            if exit_status == 0 and result and isinstance(result, dict):
+                # 成功
+                logger.info(f"✅ 用户到期时间更新成功")
+                logger.info(f"  旧到期日期: {result.get('old_expires_date', 'N/A')}")
+                logger.info(f"  新到期日期: {result.get('new_expires_date', 'N/A')}")
+                logger.info(f"  延长天数: {result.get('days_extended', days)}")
+
+                if result.get('was_banned'):
+                    logger.info(f"  用户曾被禁，解禁状态: {'成功' if result.get('unban_success') else '失败'}")
+
+                # Phase 3: 成功返回
+                logger.info(f"{'='*50}")
+                logger.info(f"✅ 用户 {name_arg} 到期时间更新完成")
+
+                # 执行时间记录
+                end_time = time.perf_counter()
+                execution_time = end_time - start_time
+                logger.info(f"📊 函数执行时间: {execution_time:.3f} 秒")
+                logger.info(f"{'='*50}")
+
+                return result
+
+            else:
+                # 更新失败
+                logger.error(f"❌ 用户更新失败 (尝试 {attempt}/{max_retries})")
+                logger.error(f"Exit status: {exit_status}")
+                if err:
+                    logger.error(f"错误信息: {err}")
+
+                # 未达到最大重试次数，等待后继续
+                if attempt < max_retries:
+                    logger.info(f"⏳ 等待 {retry_delay} 秒后重试...")
+                    time.sleep(retry_delay)
+                    continue
+
+        except Exception as e:
+            logger.error(f"❌ 异常发生 (尝试 {attempt}/{max_retries}): {e}")
+            logger.exception("详细异常信息:")
+
+            # 未达到最大重试次数，等待后继续
+            if attempt < max_retries:
+                logger.info(f"⏳ 等待 {retry_delay} 秒后重试...")
+                time.sleep(retry_delay)
+                continue
+
+    # Phase 4: 重试次数耗尽
+    logger.error(f"{'='*50}")
+    logger.error(f"❌ 用户 {name_arg} 到期时间更新失败")
+    logger.error(f"❌ 已尝试 {max_retries} 次，全部失败")
+
+    # 执行时间记录
+    end_time = time.perf_counter()
+    execution_time = end_time - start_time
+    logger.info(f"📊 函数执行时间: {execution_time:.3f} 秒")
+    logger.error(f"{'='*50}")
+
+    return None
+
+
 def test_add_user_v3(proxy, name_arg='test_user_3@example.com', url=None, alias=None, **kwargs):
     """智能用户添加功能（v3 版本）
 

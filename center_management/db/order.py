@@ -8,7 +8,7 @@ class OrderConfig(BaseConfig):
         super().__init__()
         logger.info("订单配置初始化成功")
     
-    def insert_order(self, product_name: str, trade_num: int, amount: int, email: str, phone: str, payment_provider: str):
+    def insert_order(self, product_name: str, trade_num: int, amount: int, email: str, phone: str, payment_provider: str, subscription_type: str = "one_time"):
         """插入新订单（包含超时跟踪）
 
         Args:
@@ -18,6 +18,7 @@ class OrderConfig(BaseConfig):
             email: 用户邮箱
             phone: 用户手机号
             payment_provider: 支付提供商（如：stripe, h5zhifu, free）
+            subscription_type: 订单类型（one_time: 一次性购买, subscription: 订阅）
         """
         try:
             params = {
@@ -26,10 +27,11 @@ class OrderConfig(BaseConfig):
                 "p_amount": amount,
                 "p_email": email,
                 "p_phone": phone,
-                "p_payment_provider": payment_provider
+                "p_payment_provider": payment_provider,
+                "p_subscription_type": subscription_type
             }
             response = self.supabase.rpc("insert_order", params).execute()
-            logger.info(f"插入订单成功，订单ID: {response.data}，支付方式: {payment_provider}，已设置10分钟超时跟踪")
+            logger.info(f"插入订单成功，订单ID: {response.data}，支付方式: {payment_provider}，类型: {subscription_type}，已设置10分钟超时跟踪")
             return response.data  # 返回新订单的UUID
         except APIError as e:
             logger.error(f"插入订单失败: {e}")

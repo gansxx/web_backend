@@ -94,47 +94,48 @@ def node_proxy_context(hostname, port=22, username='root', key_file=None, timeou
 	finally:
 		proxy.disconnect()
 
-def run_remote_self_sb_change(proxy, port_arg=None, name_arg=None, up_mbps=None, down_mbps=None, script_path='/root/sing-box-v2ray/self_sb_change.sh'):
-	"""在远端执行已存在的 self_sb_change.sh 脚本以注册用户，并返回 hy2_link。
 
-	参数:
-		proxy: NodeProxy对象，用于SSH连接
-		port_arg: 端口参数
-		name_arg: 用户名参数
-		up_mbps: 上传带宽限制
-		down_mbps: 下载带宽限制
-		script_path: 脚本路径
+# def run_remote_self_sb_change(proxy, port_arg=None, name_arg=None, up_mbps=None, down_mbps=None, script_path='/root/sing-box-v2ray/self_sb_change.sh'):
+# 	"""在远端执行已存在的 self_sb_change.sh 脚本以注册用户，并返回 hy2_link。
 
-	返回值: (exit_status, hy2_link_or_none, stdout, stderr)
-	"""
-	args = []
-	if port_arg is not None:
-		args.append(f"-p {int(port_arg)}")
-	if name_arg is not None:
-		args.append(f"-n {shlex.quote(str(name_arg))}")
-	if up_mbps is not None:
-		args.append(f"-u {int(up_mbps)}")
-	if down_mbps is not None:
-		args.append(f"-d {int(down_mbps)}")
+# 	参数:
+# 		proxy: NodeProxy对象，用于SSH连接
+# 		port_arg: 端口参数
+# 		name_arg: 用户名参数
+# 		up_mbps: 上传带宽限制
+# 		down_mbps: 下载带宽限制
+# 		script_path: 脚本路径
 
-	argstr = ' '.join(args)
-	command = f"sudo {script_path} {argstr}"
-	logger.info(f"Executing remote script: {command}")
+# 	返回值: (exit_status, hy2_link_or_none, stdout, stderr)
+# 	"""
+# 	args = []
+# 	if port_arg is not None:
+# 		args.append(f"-p {int(port_arg)}")
+# 	if name_arg is not None:
+# 		args.append(f"-n {shlex.quote(str(name_arg))}")
+# 	if up_mbps is not None:
+# 		args.append(f"-u {int(up_mbps)}")
+# 	if down_mbps is not None:
+# 		args.append(f"-d {int(down_mbps)}")
 
-	exit_status, out, err = proxy.execute_command(command)
+# 	argstr = ' '.join(args)
+# 	command = f"sudo {script_path} {argstr}"
+# 	logger.info(f"Executing remote script: {command}")
 
-	# 尝试从 stdout 中解析 hy2_link，脚本以打印 hy2_link 为最后一部分
-	hy2_link = None
-	if out:
-		# 一般 hy2 链接的格式以 hysteria2:// 开头，尝试搜索第一个匹配项
-		m = re.search(r"hysteria2://[A-Za-z0-9\-._~%:@/?&=+#]+", out)
-		if m:
-			hy2_link = m.group(0)
+# 	exit_status, out, err = proxy.execute_command(command)
 
-	return exit_status, hy2_link, out, err
+# 	# 尝试从 stdout 中解析 hy2_link，脚本以打印 hy2_link 为最后一部分
+# 	hy2_link = None
+# 	if out:
+# 		# 一般 hy2 链接的格式以 hysteria2:// 开头，尝试搜索第一个匹配项
+# 		m = re.search(r"hysteria2://[A-Za-z0-9\-._~%:@/?&=+#]+", out)
+# 		if m:
+# 			hy2_link = m.group(0)
+
+# 	return exit_status, hy2_link, out, err
 
 def run_add_user_v3(proxy, name_arg=None, alias=None,up_mbps=None,down_mbps=None,script_path='/root/sing-box-v2ray/sb_user_manager/add_user.py'):
-    """在远端执行已存在的 self_sb_change.sh 脚本以注册用户，并返回 hy2_link。
+    """在远端执行已存在的 add_user.py 脚本以注册用户，并返回 hy2_link。
 
     参数:
         proxy: NodeProxy对象，用于SSH连接
@@ -197,6 +198,86 @@ def run_add_user_v3(proxy, name_arg=None, alias=None,up_mbps=None,down_mbps=None
     return exit_status, hy2_link, result if result else out, err
 
 
+def run_update_user(proxy, name_arg=None, days=30, script_path='/root/sing-box-v2ray/sb_user_manager/update_user.py'):
+    """在远端执行已存在的 update_user.py 脚本以更新用户到期时间。
+
+    参数:
+        proxy: NodeProxy对象，用于SSH连接
+        name_arg: 用户名参数（邮箱地址）
+        days: 延长天数（默认30天）
+        script_path: 脚本路径
+
+    返回值: (exit_status, result_dict, stdout, stderr)
+        result_dict 包含:
+        {
+            'name': str,                    # 用户邮箱
+            'old_expires_date': str,        # 原到期日期
+            'new_expires_date': str,        # 新到期日期
+            'days_extended': int,           # 延长天数
+            'was_banned': bool,             # 是否曾被禁
+            'unban_success': bool           # 解禁是否成功（如果有）
+        }
+    """
+    args = []
+    if name_arg is not None:
+        args.append(f"-n {shlex.quote(str(name_arg))}")
+    if days is not None:
+        args.append(f"-d {int(days)}")
+
+    argstr = ' '.join(args)
+    command = f"sudo python3 {script_path} {argstr}"
+    logger.info(f"Executing remote update script: {command}")
+
+    exit_status, out, err = proxy.execute_command(command)
+
+    # 解析输出
+    result = {}
+
+    if out and out.strip():
+        # 提取用户名
+        # 格式: "User: user@example.com"
+        user_match = re.search(r"User:\s+([^\s]+)", out)
+        if user_match:
+            result['name'] = user_match.group(1)
+
+        # 提取旧到期日期
+        # 格式: "Old expiration:  Never" 或 "Old expiration:  2025-01-15 10:30:45"
+        old_exp_match = re.search(r"Old expiration:\s+(.+)", out)
+        if old_exp_match:
+            result['old_expires_date'] = old_exp_match.group(1).strip()
+
+        # 提取新到期日期
+        # 格式: "New expiration:  2025-02-14 10:30:45"
+        new_exp_match = re.search(r"New expiration:\s+(.+)", out)
+        if new_exp_match:
+            result['new_expires_date'] = new_exp_match.group(1).strip()
+
+        # 提取延长天数
+        # 格式: "Days extended:   30"
+        days_match = re.search(r"Days extended:\s+(\d+)", out)
+        if days_match:
+            result['days_extended'] = int(days_match.group(1))
+
+        # 检查是否曾被禁
+        # 格式: "Was banned:      Yes" 或 "Was banned:      No"
+        banned_match = re.search(r"Was banned:\s+(Yes|No)", out)
+        if banned_match:
+            result['was_banned'] = (banned_match.group(1) == 'Yes')
+        else:
+            result['was_banned'] = False
+
+        # 检查解禁是否成功
+        # 格式: "Unban status:    ✓ Successfully unbanned"
+        unban_success_match = re.search(r"Unban status:\s+✓ Successfully unbanned", out)
+        result['unban_success'] = bool(unban_success_match)
+
+        # 如果没有提取到名称，使用传入的参数
+        if 'name' not in result and name_arg:
+            result['name'] = name_arg
+
+    return exit_status, result if result else out, out, err
+
+
 def verify_hy2_link(uri, script_path=None, timeout=30, cwd=None):
 	"""调用本地的 `link_verificate.sh` 脚本验证给定的 hysteria2 URI 是否可用。
 
@@ -228,270 +309,4 @@ def verify_hy2_link(uri, script_path=None, timeout=30, cwd=None):
 		err = getattr(e, 'stderr', b'') or b''
 		return -1, out.decode('utf-8', errors='ignore'), err.decode('utf-8', errors='ignore'), False
 
-# 运行远端数据获取功能
 
-
-def find_database_file(proxy, possible_paths=None, timeout=10):
-	"""在远程服务器上查找数据库文件
-
-	参数:
-		proxy: NodeProxy对象，用于SSH连接
-		possible_paths: 可能的数据库路径列表
-		timeout: 超时时间
-
-	返回: 找到的数据库文件路径，如果没找到返回None
-	"""
-	if possible_paths is None:
-		possible_paths = [
-			'/var/lib/sing-box/v2api_stats.db',
-			'/root/sing-box/v2api_stats.db',
-			'/opt/sing-box/v2api_stats.db',
-			'/usr/local/sing-box/v2api_stats.db',
-			'/tmp/v2api_stats.db'
-		]
-
-	logger.info("Searching for database file")
-
-	for path in possible_paths:
-		# 检查文件是否存在
-		cmd = f"test -f '{path}' && echo 'exists' || echo 'not_exists'"
-		exit_status, out, err = proxy.execute_command(cmd, timeout=timeout)
-
-		if exit_status == 0 and 'exists' in out.strip():
-			# 验证文件是否是有效的SQLite数据库
-			cmd = f"file '{path}'"
-			exit_status, out, err = proxy.execute_command(cmd, timeout=timeout)
-			if exit_status == 0 and 'SQLite' in out:
-				logger.info(f"Found database file: {path}")
-				return path
-
-	logger.warning("No valid database file found")
-	return None
-
-
-def fetch_db_data_direct(proxy, table_names=None, db_path=None, timeout=10):
-	"""直接在远程服务器上查询数据库并返回数据（不复制文件）
-
-	参数:
-		proxy: NodeProxy对象，用于SSH连接
-		table_names: 要查询的表名列表，None表示查询['users']
-		db_path: 数据库文件路径，None表示自动查找
-		timeout: 超时时间
-
-	返回: dict, key为表名, value为list[dict]（每行为dict列名->值）
-	"""
-	if table_names is None:
-		table_names = ['users']
-
-	logger.info("Direct query database")
-
-	# 如果没有指定数据库路径，自动查找
-	if db_path is None:
-		db_path = find_database_file(proxy, timeout=timeout)
-		if not db_path:
-			raise FileNotFoundError("Database file not found on remote server")
-
-	logger.info(f"Using database: {db_path}")
-
-	results = {}
-
-	for table in table_names:
-		try:
-			logger.info(f"Querying table: {table}")
-
-			# 检查表是否存在
-			check_cmd = f"sqlite3 '{db_path}' \"SELECT name FROM sqlite_master WHERE type='table' AND name='{table}';\""
-			exit_status, out, err = proxy.execute_command(check_cmd, timeout=timeout)
-
-			if exit_status != 0 or not out.strip():
-				logger.warning(f"Table {table} does not exist")
-				results[table] = []
-				continue
-
-			# 查询表结构
-			structure_cmd = f"sqlite3 '{db_path}' \"PRAGMA table_info('{table}');\""
-			exit_status, out, err = proxy.execute_command(structure_cmd, timeout=timeout)
-
-			if exit_status != 0:
-				logger.warning(f"Failed to get structure for table {table}")
-				results[table] = []
-				continue
-
-			# 解析表结构
-			lines = out.strip().split('\n')
-			columns = []
-			for line in lines:
-				if line.strip():
-					parts = line.split('|')
-					if len(parts) >= 2:
-						columns.append(parts[1])  # 列名在第二个位置
-
-			if not columns:
-				logger.warning(f"No columns found for table {table}")
-				results[table] = []
-				continue
-
-			# 查询表数据，以JSON格式返回
-			# 构建JSON对象字段映射
-			json_mappings = []
-			for col in columns:
-				json_mappings.append(f"'{col}', {col}")
-			json_mapping_str = ", ".join(json_mappings)
-			query_cmd = f"sqlite3 '{db_path}' \"SELECT json_group_array(json_object({json_mapping_str})) FROM (SELECT * FROM '{table}');\""
-			exit_status, out, err = proxy.execute_command(query_cmd, timeout=30)
-
-			if exit_status != 0:
-				logger.warning(f"Failed to query data from table {table}")
-				results[table] = []
-				continue
-
-			# 解析JSON结果
-			import json
-			try:
-				data = json.loads(out.strip())
-				results[table] = data
-			except json.JSONDecodeError as e:
-				logger.warning(f"Failed to parse JSON from table {table}: {e}")
-				# 回退到CSV格式
-				csv_cmd = f"sqlite3 '{db_path}' \".headers on\" \".mode csv\" \"SELECT * FROM '{table}';\""
-				exit_status, csv_out, csv_err = proxy.execute_command(csv_cmd, timeout=30)
-
-				if exit_status == 0:
-					lines = csv_out.strip().split('\n')
-					if len(lines) > 1:
-						headers = [h.strip('"') for h in lines[0].split(',')]
-						rows = []
-						for line in lines[1:]:
-							if line.strip():
-								values = [v.strip('"') for v in line.split(',')]
-								rows.append(dict(zip(headers, values)))
-						results[table] = rows
-					else:
-						results[table] = []
-				else:
-					results[table] = []
-
-		except Exception as e:
-			logger.error(f"Error querying table {table}: {e}")
-			results[table] = []
-
-	return results
-
-
-
-
-def fetch_and_save_tables_csv(proxy, table_names, out_dir=None, **kwargs):
-	"""Fetch specified tables from remote DB and save each table as CSV in out_dir.
-
-	参数:
-		proxy: NodeProxy对象，用于SSH连接
-		table_names: 要查询的表名列表
-		out_dir: 输出目录，None表示默认目录
-		**kwargs: 其他参数
-
-	返回: 写入的文件路径列表
-	"""
-	# 当未指定 out_dir 时，默认保存至 ./csv/ 目录下
-	if out_dir is None:
-		out_dir = (Path('.') / 'csv').resolve()
-	else:
-		out_dir = Path(out_dir).resolve()
-	# 确保目录存在
-	out_dir.mkdir(parents=True, exist_ok=True)
-
-	# 使用新的直接查询方法获取数据
-	data = fetch_db_data_direct(proxy, table_names=table_names, **kwargs)
-	written = []
-	import csv
-	for table, rows in data.items():
-		fname = out_dir / f"{table}.csv"
-		if not rows:
-			# create empty file with no rows
-			with open(fname, 'w', newline='', encoding='utf-8') as f:
-				pass
-			written.append(str(fname))
-			continue
-		cols = list(rows[0].keys())
-		with open(fname, 'w', newline='', encoding='utf-8') as f:
-			writer = csv.DictWriter(f, fieldnames=cols)
-			writer.writeheader()
-			for r in rows:
-				writer.writerow(r)
-		written.append(str(fname))
-	return written
-
-
-def get_remote_ports_by_protocol(proxy, timeout=10):
-	"""获取远端所有端口，并按协议名作为键，输出的端口列表为值。
-
-	使用 netstat 或 ss 命令获取远端服务器上所有监听的端口，
-	然后按协议类型（TCP/UDP）进行分组。
-
-	参数:
-		proxy: NodeProxy对象，用于SSH连接
-		timeout: 连接超时时间，默认10秒
-
-	返回:
-		dict: 键为协议名（'tcp', 'udp', 'tcp6', 'udp6'），值为对应的端口列表
-	"""
-	logger.info("Getting remote ports")
-
-	# 先尝试 ss 命令，如果失败则使用 netstat 命令
-	cmd = "ss -tuln"
-	exit_status, output, error = proxy.execute_command(cmd, timeout=timeout)
-
-	# 如果 ss 命令失败，尝试使用 netstat
-	if exit_status != 0:
-		logger.warning("ss command failed, trying netstat...")
-		cmd = "netstat -tuln"
-		exit_status, output, error = proxy.execute_command(cmd, timeout=timeout)
-
-		if exit_status != 0:
-			logger.error(f"Both ss and netstat commands failed: {error}")
-			return {}
-
-	# 解析输出并按协议分组
-	ports_by_protocol = {'tcp': [], 'udp': [], 'tcp6': [], 'udp6': []}
-
-	for line in output.strip().split('\n'):
-		line = line.strip()
-		if not line or line.startswith('Netid') or line.startswith('Proto') or line.startswith('Active'):
-			continue
-
-		# 解析 ss/netstat 命令输出格式
-		parts = line.split()
-		if len(parts) >= 5:
-			protocol = parts[0].lower()
-			address = parts[4]  # Local Address:Port 在第5列
-
-			# 处理 IPv6 地址格式 [::]:port 或 127.0.0.1:port
-			if ']:' in address:
-				# IPv6 地址格式 [addr]:port
-				port_part = address.split(']:')[-1]
-			elif ':' in address:
-				# IPv4 地址格式 addr:port
-				port_part = address.split(':')[-1]
-			else:
-				# 只有端口号的情况
-				port_part = address
-
-			# 移除可能的 * 前缀
-			port_part = port_part.lstrip('*')
-
-			if port_part.isdigit():
-				port = int(port_part)
-
-				# 根据地址类型判断协议版本
-				if '[' in address or '::' in address:
-					# IPv6 地址
-					protocol_key = f"{protocol}6"
-				else:
-					# IPv4 地址
-					protocol_key = protocol
-
-				if protocol_key in ports_by_protocol:
-					if port not in ports_by_protocol[protocol_key]:
-						ports_by_protocol[protocol_key].append(port)
-
-	# 过滤掉空列表并排序
-	return {k: sorted(v) for k, v in ports_by_protocol.items() if v}

@@ -1,0 +1,16 @@
+{
+    "plan_name": "Monthly Subscription",
+    "plan_id": "monthly_subscription",
+    "plan_keyword": "monthly_sub",
+    "plan_price_env": "SUBSCRIPTION_MONTHLY_PRICE",
+    "plan_currency_env": "SUBSCRIPTION_CURRENCY",
+    "gateway_ip_env": "subscription_gateway_ip",
+    "domain_url": "sub.selfgo.asia",
+    "url_alias": "monthly_sub_plan",
+    "up_mbps": 50,
+    "down_mbps": 50,
+    "duration_days": 30,
+    "stripe_price_id_env": "STRIPE_MONTHLY_PRICE_ID",
+    "trial_days": 30,
+    "billing_period": "monthly"
+}

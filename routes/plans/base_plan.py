@@ -45,6 +45,21 @@ class PlanConfig:
         return gateway_ip
 
 
+@dataclass
+class SubscriptionPlanConfig(PlanConfig):
+    """订阅套餐配置类 - 继承 PlanConfig 并添加订阅特有字段"""
+    stripe_price_id_env: str = ""      # Stripe Price ID 环境变量名
+    trial_days: int = 30                # 试用天数
+    billing_period: str = "monthly"     # 计费周期: monthly/yearly
+
+    def get_stripe_price_id(self) -> str:
+        """从环境变量读取 Stripe Price ID"""
+        price_id = os.getenv(self.stripe_price_id_env, "")
+        if not price_id:
+            raise ValueError(f"环境变量 {self.stripe_price_id_env} 未设置")
+        return price_id
+
+
 # Pydantic 模型
 class PlanResponse(BaseModel):
     """套餐检查响应模型"""

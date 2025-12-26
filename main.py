@@ -296,6 +296,22 @@ try:
 except Exception as _e:
     logger.error(f"注册 stripe_webhook 失败: {_e}")
 
+# 注册 subscription_plan 路由（使用工厂模式，支持多种订阅套餐）
+try:
+    from routes.plans.subscription_plan import create_subscription_plan_router, load_subscription_config
+
+    # 加载并注册月度订阅套餐
+    monthly_config = load_subscription_config("monthly")
+    monthly_subscription_router = create_subscription_plan_router(monthly_config)
+    app.include_router(monthly_subscription_router)
+    logger.info(f"routes.plans.subscription_plan ({monthly_config.plan_id}) 已注册")
+
+    # 未来可添加更多订阅套餐：
+    # yearly_config = load_subscription_config("yearly")
+    # app.include_router(create_subscription_plan_router(yearly_config))
+except Exception as _e:
+    logger.error(f"注册 routes.plans.subscription_plan 失败: {_e}")
+
 class AuthRequest(BaseModel):
     email: EmailStr
     password: str

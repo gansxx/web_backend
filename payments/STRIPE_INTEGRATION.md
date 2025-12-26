@@ -5,11 +5,22 @@
 ## 概览
 
 - **支付方式**: 与现有 h5zhifu (支付宝/微信) 并存
-- **支持功能**: 一次性支付、Webhook 回调、客户管理
+- **支持功能**: 一次性支付、**月度订阅**、Webhook 回调、客户管理
 - **支付提供商**: Stripe (国际支付) + h5zhifu (中国支付)
+
+### 支付模式对比
+
+| 功能 | 一次性支付 | 月度订阅 |
+|------|-----------|---------|
+| 计费模式 | 单次扣款 | 自动续费 |
+| 试用期 | 不支持 | 30天免费（需绑卡） |
+| 取消策略 | 不适用 | 周期结束生效 |
+| 退款 | 支持 | 不支持 |
+| 适用场景 | 流量包、一次性购买 | 月度会员 |
 
 ## 架构设计
 
+### 一次性支付架构
 ```
 ┌─────────────┐
 │   前端      │  Stripe.js + Payment Element
@@ -43,26 +54,79 @@
 └─────────────┘
 ```
 
+### 订阅支付架构
+```
+┌─────────────┐
+│   前端      │  用户点击订阅
+└──────┬──────┘
+       │
+       │ POST /subscription/purchase
+       ▼
+┌─────────────────────────────────────────────────────┐
+│  FastAPI Backend (Port 8001)                        │
+│  ┌────────────────────────────────────────────┐     │
+│  │  routes/plans/subscription_plan.py         │     │
+│  │  - /subscription/purchase (创建checkout)   │     │
+│  │  - /subscription/status (查询状态)         │     │
+│  │  - /subscription/cancel (取消订阅)         │     │
+│  │  - /subscription/portal (客户门户)         │     │
+│  └────────┬───────────────────────────────────┘     │
+│           │                                          │
+│  ┌────────▼───────────────────────────────────┐     │
+│  │ payments/stripe_subscription.py            │     │
+│  │ center_management/db/subscription.py       │     │
+│  └────────┬───────────────────────────────────┘     │
+│           │                                          │
+│  ┌────────▼───────────────────────────────────┐     │
+│  │  Supabase Database                         │     │
+│  │  - subscription 表                         │     │
+│  │  - order 表 (stripe_subscription_id)       │     │
+│  └────────────────────────────────────────────┘     │
+└─────────────────────────────────────────────────────┘
+       ▲
+       │ POST /stripe/webhook
+       │ (Subscription Events)
+       │
+┌──────┴──────┐
+│   Stripe    │
+│  - checkout.session.completed (subscription)
+│  - customer.subscription.updated
+│  - customer.subscription.deleted
+│  - invoice.paid
+│  - invoice.payment_failed
+└─────────────┘
+```
+
 ## 文件结构
 
 ```
 web_backend/
 ├── docs/
-│   └── WEBHOOK_LOCAL_TESTING.md         # 🆕 Webhook 本地测试详细指南
+│   └── WEBHOOK_LOCAL_TESTING.md           # Webhook 本地测试详细指南
 ├── scripts/
-│   ├── start_stripe_webhook.sh          # 🆕 启动 webhook 转发
-│   └── test_stripe_webhook_trigger.sh   # 🆕 触发测试事件
+│   ├── start_stripe_webhook.sh            # 启动 webhook 转发
+│   └── test_stripe_webhook_trigger.sh     # 触发测试事件
 ├── payments/
-│   ├── h5zhifu.py              # 现有中国支付网关
-│   ├── stripe_payment.py       # 新增：Stripe 支付模块
-│   └── payment_factory.py      # 新增：支付工厂路由器
+│   ├── h5zhifu.py                # 现有中国支付网关
+│   ├── stripe_payment.py         # Stripe 一次性支付模块
+│   ├── stripe_subscription.py    # 🆕 Stripe 订阅支付模块
+│   └── payment_factory.py        # 支付工厂路由器
 ├── routes/
-│   └── stripe_routes.py        # 新增：Stripe API 端点
+│   ├── stripe_routes.py          # Stripe 一次性支付 API
+│   ├── stripe_webhook.py         # Stripe Webhook 处理（含订阅事件）
+│   └── plans/
+│       └── subscription_plan.py  # 🆕 订阅 API 端点
+├── center_management/
+│   └── db/
+│       └── subscription.py       # 🆕 订阅数据库操作
+├── data/products/
+│   └── monthly_subscription.json # 🆕 订阅产品配置
 ├── supabase/migrations/
-│   └── 12_stripe_integration.sql  # 数据库迁移
-├── test_stripe_payment.py      # 集成测试脚本
-├── .env                        # 环境配置（包含 Stripe 密钥）
-└── STRIPE_INTEGRATION.md       # 本文档
+│   ├── 12_stripe_integration.sql          # 一次性支付数据库迁移
+│   └── 20251225120000_subscription_tables.sql  # 🆕 订阅数据库迁移
+├── test_stripe_payment.py        # 集成测试脚本
+├── .env                          # 环境配置（包含 Stripe 密钥）
+└── STRIPE_INTEGRATION.md         # 本文档
 ```
 
 ## 快速开始
@@ -328,101 +392,8 @@ const { error } = await stripe.confirmPayment({
 4. 复制 Webhook 签名密钥到生产环境的 `.env`
 
 ## 前端集成
+- 使用checkout处理前端事务
 
-### 使用 Stripe Payment Element（推荐）
-
-Stripe Payment Element 是一个预构建的 UI 组件，自动处理支付方式。
-
-**安装依赖:**
-```bash
-npm install @stripe/stripe-js @stripe/react-stripe-js
-```
-
-**React 集成示例:**
-
-```jsx
-import { loadStripe } from '@stripe/stripe-js';
-import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
-import { useState } from 'react';
-
-// 加载 Stripe（使用发布密钥）
-const stripePromise = loadStripe('pk_test_your_publishable_key');
-
-function CheckoutForm({ clientSecret }) {
-  const stripe = useStripe();
-  const elements = useElements();
-  const [error, setError] = useState(null);
-  const [processing, setProcessing] = useState(false);
-
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-
-    if (!stripe || !elements) return;
-
-    setProcessing(true);
-
-    const { error } = await stripe.confirmPayment({
-      elements,
-      confirmParams: {
-        return_url: `${window.location.origin}/payment-success`,
-      },
-    });
-
-    if (error) {
-      setError(error.message);
-      setProcessing(false);
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit}>
-      <PaymentElement />
-      <button disabled={!stripe || processing}>
-        {processing ? '处理中...' : '支付'}
-      </button>
-      {error && <div>{error}</div>}
-    </form>
-  );
-}
-
-export default function StripePaymentPage({ productName, amount }) {
-  const [clientSecret, setClientSecret] = useState('');
-
-  // 创建支付意图
-  const createPaymentIntent = async () => {
-    const response = await fetch('http://localhost:8001/stripe/create-payment-intent', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        product_name: productName,
-        trade_num: 1,
-        amount: amount, // 单位：分
-        currency: 'usd',
-        email: 'customer@example.com',
-        phone: '+1234567890'
-      }),
-    });
-
-    const data = await response.json();
-    setClientSecret(data.client_secret);
-  };
-
-  // 在组件挂载时创建支付意图
-  useEffect(() => {
-    createPaymentIntent();
-  }, []);
-
-  return (
-    <div>
-      {clientSecret && (
-        <Elements stripe={stripePromise} options={{ clientSecret }}>
-          <CheckoutForm clientSecret={clientSecret} />
-        </Elements>
-      )}
-    </div>
-  );
-}
-```
 
 ### Next.js 集成示例
 
@@ -610,26 +581,429 @@ psql "$PRODUCTION_DATABASE_URL" \
 2. 检查数据库函数 `update_stripe_payment_status` 是否执行成功
 3. 验证订单 ID 和 Payment Intent ID 是否正确关联
 
+---
+
+# 月度订阅功能
+
+## 订阅功能概览
+
+| 项目 | 配置 |
+|------|------|
+| 价格 | 25 HKD/月 |
+| 试用期 | 30天免费（需绑卡） |
+| 取消策略 | 周期结束后停止服务 |
+| 降级策略 | 周期结束生效 |
+| 升级/退款 | 不支持 |
+
+## 订阅配置
+
+### 环境变量
+
+在 `.env` 中配置订阅相关变量：
+
+```bash
+# Stripe Subscription Configuration (月度订阅)
+STRIPE_MONTHLY_PRICE_ID=price_xxxxxxxxxxxxxx    # Stripe Price ID
+STRIPE_MONTHLY_PRODUCT_ID=prod_xxxxxxxxxxxxxx   # Stripe Product ID
+SUBSCRIPTION_TRIAL_DAYS=30                       # 试用期天数
+SUBSCRIPTION_MONTHLY_PRICE=2500                  # 月费（分），2500 = 25 HKD
+SUBSCRIPTION_CURRENCY=hkd                        # 货币
+subscription_gateway_ip=35.77.91.182             # 服务网关 IP
+```
+
+### Stripe Dashboard 配置
+
+1. **创建 Product:**
+   - 访问 [Stripe Dashboard - Products](https://dashboard.stripe.com/products)
+   - 点击 "Add product"
+   - 名称: "Monthly Subscription Plan"
+   - 选择 "Recurring" 定价模式
+   - 价格: 25 HKD/月
+
+2. **复制 Price ID 和 Product ID:**
+   - Price ID 格式: `price_xxxxxxxxxxxxxx`
+   - Product ID 格式: `prod_xxxxxxxxxxxxxx`
+   - 更新到 `.env` 文件
+
+3. **配置 Webhook 事件:**
+   - 访问 [Stripe Dashboard - Webhooks](https://dashboard.stripe.com/webhooks)
+   - 添加以下事件：
+     - `checkout.session.completed`
+     - `customer.subscription.created`
+     - `customer.subscription.updated`
+     - `customer.subscription.deleted`
+     - `invoice.paid`
+     - `invoice.payment_failed`
+
+### 运行数据库迁移
+
+```bash
+source .env
+
+psql "postgresql://postgres:$POSTGRES_PASSWORD@localhost:5438/postgres" \
+  -v ON_ERROR_STOP=1 \
+  -f supabase/migrations/20251225120000_subscription_tables.sql
+```
+
+**迁移内容:**
+- 创建 `subscription` 表
+- 添加 `stripe_subscription_id` 和 `subscription_type` 字段到 `order` 表
+- 创建订阅管理数据库函数
+
+## 订阅 API 端点
+
+### POST /subscription/purchase
+
+创建订阅 Checkout Session（需登录）。
+
+**请求体:**
+```json
+{
+  "plan_id": "monthly_subscription"
+}
+```
+
+**响应示例:**
+```json
+{
+  "success": true,
+  "message": "Subscription checkout created with 30 days free trial",
+  "checkout_url": "https://checkout.stripe.com/c/pay/cs_test_xxx",
+  "checkout_session_id": "cs_test_xxx"
+}
+```
+
+**前端集成:**
+```javascript
+// 用户点击订阅按钮
+const response = await fetch('/subscription/purchase', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  credentials: 'include', // 包含 cookies
+  body: JSON.stringify({ plan_id: 'monthly_subscription' })
+});
+
+const data = await response.json();
+if (data.success) {
+  // 跳转到 Stripe Checkout 页面
+  window.location.href = data.checkout_url;
+}
+```
+
+### GET /subscription/status
+
+查询用户订阅状态（需登录）。
+
+**响应示例:**
+```json
+{
+  "has_subscription": true,
+  "subscription_status": "trialing",
+  "current_period_end": "2025-02-25T00:00:00Z",
+  "cancel_at_period_end": false,
+  "trial_end": "2025-02-25T00:00:00Z",
+  "is_trial": true,
+  "stripe_subscription_id": "sub_xxxxx",
+  "stripe_customer_id": "cus_xxxxx"
+}
+```
+
+**订阅状态说明:**
+- `trialing`: 试用期
+- `active`: 正常订阅
+- `past_due`: 付款逾期
+- `canceled`: 已取消
+- `incomplete`: 未完成
+- `incomplete_expired`: 未完成已过期
+
+### POST /subscription/cancel
+
+取消订阅（需登录）。
+
+**请求体:**
+```json
+{
+  "at_period_end": true
+}
+```
+
+**响应示例:**
+```json
+{
+  "success": true,
+  "message": "Subscription canceled. Access continues until 2025-02-25",
+  "cancel_at_period_end": true,
+  "current_period_end": "2025-02-25"
+}
+```
+
+### POST /subscription/reactivate
+
+恢复已取消的订阅（仅在周期结束前有效）。
+
+**响应示例:**
+```json
+{
+  "success": true,
+  "message": "Subscription reactivated successfully"
+}
+```
+
+### POST /subscription/portal
+
+获取 Stripe 客户门户 URL。
+
+**响应示例:**
+```json
+{
+  "success": true,
+  "portal_url": "https://billing.stripe.com/p/session/xxx"
+}
+```
+
+用户可在门户中：
+- 查看订阅详情
+- 更新支付方式
+- 查看发票历史
+- 取消订阅
+
+### GET /subscription/info
+
+获取订阅计划信息（公开端点）。
+
+**响应示例:**
+```json
+{
+  "plan_name": "Monthly Subscription",
+  "price": 2500,
+  "currency": "hkd",
+  "trial_days": 30,
+  "billing_period": "monthly",
+  "features": [
+    "Full VPN access",
+    "30 days free trial",
+    "Cancel anytime",
+    "Automatic renewal"
+  ]
+}
+```
+
+## 订阅 Webhook 事件
+
+### checkout.session.completed (subscription mode)
+
+用户完成 Checkout 后触发。
+
+**处理逻辑:**
+1. 解析订阅信息（subscription_id, customer_id）
+2. 在数据库中创建订阅记录
+3. 后台异步生成 VPN 产品
+4. 更新 order 表关联
+
+### customer.subscription.updated
+
+订阅状态变更时触发。
+
+**处理逻辑:**
+1. 更新订阅状态（status）
+2. 更新计费周期（current_period_start/end）
+3. 更新取消标记（cancel_at_period_end）
+
+### customer.subscription.deleted
+
+订阅被删除/终止时触发。
+
+**处理逻辑:**
+1. 标记订阅为 canceled
+2. 记录结束时间（ended_at）
+3. 停止相关服务
+
+### invoice.paid
+
+发票支付成功（续费成功）。
+
+**处理逻辑:**
+1. 更新订阅周期
+2. 确保服务继续有效
+3. 创建续费订单记录
+
+### invoice.payment_failed
+
+发票支付失败。
+
+**处理逻辑:**
+1. 更新订阅状态为 `past_due`
+2. 可选：发送提醒邮件
+3. Stripe 会自动重试
+
+## 订阅数据库结构
+
+### subscription 表
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | uuid | 主键 |
+| `user_email` | text | 用户邮箱 |
+| `stripe_customer_id` | text | Stripe Customer ID |
+| `stripe_subscription_id` | text | Stripe Subscription ID（唯一） |
+| `stripe_price_id` | text | Stripe Price ID |
+| `status` | text | 订阅状态 |
+| `current_period_start` | timestamp | 当前周期开始 |
+| `current_period_end` | timestamp | 当前周期结束 |
+| `trial_start` | timestamp | 试用开始 |
+| `trial_end` | timestamp | 试用结束 |
+| `cancel_at_period_end` | boolean | 是否周期结束后取消 |
+| `canceled_at` | timestamp | 取消时间 |
+| `ended_at` | timestamp | 结束时间 |
+| `plan_id` | text | 内部计划 ID |
+| `product_id` | uuid | 关联产品 ID |
+| `metadata` | jsonb | 额外元数据 |
+
+### order 表新增字段
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `stripe_subscription_id` | text | Stripe Subscription ID |
+| `subscription_type` | text | 订阅类型 (one_time/subscription) |
+
+## 订阅流程图
+
+### 新用户订阅流程
+```
+用户点击订阅 → POST /subscription/purchase
+       ↓
+创建 Checkout Session (trial_period_days=30)
+       ↓
+用户跳转到 Stripe Checkout
+       ↓
+用户绑定银行卡/信用卡
+       ↓
+Checkout 完成 → Webhook: checkout.session.completed
+       ↓
+创建订阅记录 + 异步生成 VPN 产品
+       ↓
+用户开始 30 天试用期
+```
+
+### 取消订阅流程
+```
+用户点击取消 → POST /subscription/cancel
+       ↓
+调用 Stripe API (cancel_at_period_end=true)
+       ↓
+更新本地数据库 (cancel_at_period_end=true)
+       ↓
+用户继续使用至周期结束
+       ↓
+周期结束 → Webhook: customer.subscription.deleted
+       ↓
+标记订阅结束，停止服务
+```
+
+### 月度续费流程
+```
+周期结束前 → Stripe 自动扣款
+       ↓
+扣款成功 → Webhook: invoice.paid
+       ↓
+更新订阅周期 (current_period_start/end)
+       ↓
+服务继续有效
+```
+
+## 前端集成示例
+
+### React 订阅按钮
+
+```jsx
+import { useState } from 'react';
+
+function SubscribeButton() {
+  const [loading, setLoading] = useState(false);
+
+  const handleSubscribe = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/subscription/purchase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ plan_id: 'monthly_subscription' })
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        window.location.href = data.checkout_url;
+      } else {
+        alert(data.message || 'Failed to create subscription');
+      }
+    } catch (error) {
+      console.error('Subscription error:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <button onClick={handleSubscribe} disabled={loading}>
+      {loading ? '处理中...' : '开始 30 天免费试用'}
+    </button>
+  );
+}
+```
+
+### 订阅状态显示
+
+```jsx
+import { useEffect, useState } from 'react';
+
+function SubscriptionStatus() {
+  const [status, setStatus] = useState(null);
+
+  useEffect(() => {
+    fetch('/subscription/status', { credentials: 'include' })
+      .then(res => res.json())
+      .then(data => setStatus(data));
+  }, []);
+
+  if (!status) return <div>加载中...</div>;
+
+  if (!status.has_subscription) {
+    return <div>您还没有订阅</div>;
+  }
+
+  return (
+    <div>
+      <p>订阅状态: {status.subscription_status}</p>
+      <p>当前周期结束: {new Date(status.current_period_end).toLocaleDateString()}</p>
+      {status.is_trial && <p>🎁 试用期中</p>}
+      {status.cancel_at_period_end && <p>⚠️ 订阅将在周期结束后取消</p>}
+    </div>
+  );
+}
+```
+
+---
+
 ## 扩展功能
 
 ### 未来可扩展的功能
 
-1. **订阅计费（Subscriptions）:**
-   - 定期扣款
-   - 订阅升级/降级
-   - 试用期管理
-
-2. **多币种支持:**
+1. **多币种支持:**
    - 自动汇率转换
    - 本地货币结算
 
-3. **退款处理:**
+2. **退款处理:**
    - 全额/部分退款
    - 退款通知
 
-4. **发票生成:**
+3. **发票生成:**
    - 自动生成发票
    - PDF 下载
+
+4. **订阅升级/降级:**
+   - 按比例计费
+   - 立即生效或周期结束生效
 
 ## 参考资源
 
@@ -650,6 +1024,7 @@ psql "$PRODUCTION_DATABASE_URL" \
 
 ---
 
-**版本**: 1.0.0
-**最后更新**: 2025-01-23
+**版本**: 2.0.0
+**最后更新**: 2025-12-25
 **维护者**: Backend Team
+**更新内容**: 添加月度订阅功能
