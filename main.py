@@ -301,7 +301,7 @@ try:
     from routes.plans.subscription_plan import create_subscription_plan_router, load_subscription_config
 
     # 加载并注册月度订阅套餐
-    monthly_config = load_subscription_config("monthly")
+    monthly_config = load_subscription_config("monthly_subscription")
     monthly_subscription_router = create_subscription_plan_router(monthly_config)
     app.include_router(monthly_subscription_router)
     logger.info(f"routes.plans.subscription_plan ({monthly_config.plan_id}) 已注册")

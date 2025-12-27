@@ -311,6 +311,7 @@ RETURNS TABLE (
     ended_at timestamptz,
     plan_id text,
     product_id uuid,
+    unique_name text,
     created_at timestamptz,
     updated_at timestamptz
 )
@@ -337,6 +338,7 @@ BEGIN
             s.ended_at,
             s.plan_id,
             s.product_id,
+            s.unique_name,
             s.created_at,
             s.updated_at
         FROM %I.subscription s

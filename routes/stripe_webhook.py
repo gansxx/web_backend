@@ -6,6 +6,43 @@ import os
 #需要旧函数的多余部分去掉，以及临时文件的清理
 # 2.将生成产品的generate_product逻辑单独独立出来管理，以方便兼容未来其他支付方式
 router = APIRouter(tags=["webhook_stripe"])
+
+def get_subscription_id_from_invoice(invoice: dict) -> str | None:
+    """
+    从 invoice 对象中提取 subscription_id
+
+    支持多种 Stripe API 版本：
+    - 旧版本: invoice.subscription (顶层字段)
+    - 新版本: invoice.parent.subscription_details.subscription
+    - 备选: invoice.lines.data[0].parent.subscription_item_details.subscription
+
+    Returns:
+        subscription_id 或 None
+    """
+    # 方法 1: 尝试从顶层获取 (旧版本 API)
+    subscription_id = invoice.get("subscription")
+    if subscription_id:
+        return subscription_id
+
+    # 方法 2: 从 parent.subscription_details 获取 (新版本 API)
+    parent = invoice.get("parent", {})
+    if parent and parent.get("type") == "subscription_details":
+        subscription_details = parent.get("subscription_details", {})
+        subscription_id = subscription_details.get("subscription")
+        if subscription_id:
+            return subscription_id
+
+    # 方法 3: 从 lines 中获取 (备选方案)
+    lines = invoice.get("lines", {}).get("data", [])
+    if lines:
+        first_line_parent = lines[0].get("parent", {})
+        if first_line_parent.get("type") == "subscription_item_details":
+            sub_item_details = first_line_parent.get("subscription_item_details", {})
+            subscription_id = sub_item_details.get("subscription")
+            if subscription_id:
+                return subscription_id
+
+    return None
 @router.post(f"/webhook/stripe")
 async def stripe_webhook_handler(
     request: Request,
@@ -118,10 +155,21 @@ async def stripe_webhook_handler(
         # 处理续费成功事件
         elif event_type == "invoice.paid":
             invoice = event["data"]["object"]
-            subscription_id = invoice.get("subscription")
+
+            # 使用辅助函数获取 subscription_id（支持多种 Stripe API 版本）
+            subscription_id = get_subscription_id_from_invoice(invoice)
+            billing_reason = invoice.get("billing_reason")
+            customer_email = invoice.get("customer_email")
+
+            # 添加详细日志
+            logger.info(f"📧 Invoice.paid event - subscription_id: {subscription_id}, billing_reason: {billing_reason}, customer: {customer_email}")
+
             if subscription_id:
+                logger.debug("进行订阅续期")
                 return await handle_invoice_paid(invoice, background_tasks)
-            return {"status": "received", "message": "Non-subscription invoice"}
+            else:
+                logger.warning(f"⚠️ Invoice.paid 事件但无 subscription_id - 可能是一次性支付发票")
+                return {"status": "received", "message": "Non-subscription invoice"}
 
         # 处理续费失败事件
         elif event_type == "invoice.payment_failed":
@@ -304,13 +352,13 @@ async def handle_subscription_checkout_completed(session: dict, background_tasks
             return {"status": "error", "message": "Failed to retrieve subscription"}
 
         # DEBUG: Log the subscription type and structure
-        import json
-        logger.info(f"🔍 DEBUG - Subscription type: {type(subscription)}")
-        logger.info(f"🔍 DEBUG - Subscription dict keys: {list(dict(subscription).keys())}")
+        # import json
+        # logger.info(f"🔍 DEBUG - Subscription type: {type(subscription)}")
+        # logger.info(f"🔍 DEBUG - Subscription dict keys: {list(dict(subscription).keys())}")
 
         # Convert to dict for easier access
         sub_dict = dict(subscription)
-        logger.info(f"🔍 DEBUG - Subscription data: {json.dumps(sub_dict, indent=2, default=str)}")
+        # logger.info(f"🔍 DEBUG - Subscription data: {json.dumps(sub_dict, indent=2, default=str)}")
 
         # Extract subscription details - use dict-style access for compatibility
         status = sub_dict.get("status", "incomplete")
@@ -320,12 +368,6 @@ async def handle_subscription_checkout_completed(session: dict, background_tasks
         current_period_end_ts = sub_dict.get("current_period_end")
         trial_start_ts = sub_dict.get("trial_start")
         trial_end_ts = sub_dict.get("trial_end")
-
-        logger.info(f"🔍 DEBUG - current_period_start: {current_period_start_ts} (type: {type(current_period_start_ts)})")
-        logger.info(f"🔍 DEBUG - current_period_end: {current_period_end_ts} (type: {type(current_period_end_ts)})")
-        logger.info(f"🔍 DEBUG - trial_start: {trial_start_ts}")
-        logger.info(f"🔍 DEBUG - trial_end: {trial_end_ts}")
-        logger.info(f"🔍 DEBUG - status: {status}")
 
         # Check if timestamps are None (not just falsy, since 0 is a valid timestamp)
         if current_period_start_ts is None or current_period_end_ts is None:
@@ -404,14 +446,24 @@ async def handle_subscription_checkout_completed(session: dict, background_tasks
 
 
 async def handle_subscription_updated(subscription: dict):
-    """Handle subscription update events (status change, renewal, etc.)"""
+    """Handle subscription update events (status change, renewal, cancellation, etc.)"""
     subscription_id = subscription.get("id")
     status = subscription.get("status")
     cancel_at_period_end = subscription.get("cancel_at_period_end", False)
     current_period_start_ts = subscription.get("current_period_start")
     current_period_end_ts = subscription.get("current_period_end")
 
+    # Extract cancellation information
+    cancel_at_ts = subscription.get("cancel_at")
+    cancellation_details = subscription.get("cancellation_details")
+
     logger.info(f"🔄 Subscription updated: {subscription_id} -> status: {status}, cancel_at_period_end: {cancel_at_period_end}")
+
+    # Log cancellation information if present
+    if cancel_at_ts:
+        logger.info(f"⚠️ Subscription scheduled to cancel at: {datetime.fromtimestamp(cancel_at_ts)}")
+    if cancellation_details:
+        logger.info(f"📝 Cancellation details: {cancellation_details}")
 
     if not subscription_id or not status:
         logger.error("Missing required subscription data")
@@ -421,13 +473,24 @@ async def handle_subscription_updated(subscription: dict):
         from center_management.db.subscription import get_subscription_config
         sub_config = get_subscription_config()
 
+        # Prepare cancellation parameters
+        cancel_at = datetime.fromtimestamp(cancel_at_ts) if cancel_at_ts else None
+
+        # Only save cancellation_details if cancel_at is not null (user is canceling)
+        details_to_save = None
+        if cancel_at and cancellation_details:
+            details_to_save = cancellation_details
+            logger.info(f"💾 Saving cancellation feedback: {details_to_save}")
+
         # Update subscription in database
         sub_config.update_subscription_status(
             stripe_subscription_id=subscription_id,
             status=status,
             current_period_start=datetime.fromtimestamp(current_period_start_ts) if current_period_start_ts else None,
             current_period_end=datetime.fromtimestamp(current_period_end_ts) if current_period_end_ts else None,
-            cancel_at_period_end=cancel_at_period_end
+            cancel_at_period_end=cancel_at_period_end,
+            cancel_at=cancel_at,
+            cancellation_details=details_to_save
         )
 
         logger.info(f"✅ Subscription {subscription_id} updated in database")
@@ -474,7 +537,9 @@ async def handle_subscription_deleted(subscription: dict):
 
 async def handle_invoice_paid(invoice: dict, background_tasks):
     """Handle successful invoice payment (subscription renewal)"""
-    subscription_id = invoice.get("subscription")
+
+    # 使用辅助函数获取 subscription_id（支持多种 Stripe API 版本）
+    subscription_id = get_subscription_id_from_invoice(invoice)
     customer_email = invoice.get("customer_email")
     billing_reason = invoice.get("billing_reason")  # 'subscription_cycle', 'subscription_create', etc.
 
@@ -493,39 +558,55 @@ async def handle_invoice_paid(invoice: dict, background_tasks):
         from center_management.db.subscription import get_subscription_config
         sub_config = get_subscription_config()
 
-        # Get subscription to update period
-        from payments.stripe_subscription import StripeSubscriptionService
-        subscription = StripeSubscriptionService.get_subscription(subscription_id)
+        # 优先从 invoice 中获取 period 信息（避免额外 API 调用）
+        # invoice.lines.data[0].period 包含订阅周期信息
+        current_period_start_ts = None
+        current_period_end_ts = None
 
-        if subscription:
-            # Use dict-style access for compatibility
-            current_period_start_ts = subscription.get("current_period_start")
-            current_period_end_ts = subscription.get("current_period_end")
+        # 方法 1: 从 invoice lines 中获取订阅周期
+        lines = invoice.get("lines", {}).get("data", [])
+        if lines:
+            period = lines[0].get("period", {})
+            current_period_start_ts = period.get("start")
+            current_period_end_ts = period.get("end")
+            logger.info(f"📅 Period from invoice lines: {current_period_start_ts} → {current_period_end_ts}")
 
-            if current_period_start_ts and current_period_end_ts:
-                current_period_start = datetime.fromtimestamp(current_period_start_ts)
-                current_period_end = datetime.fromtimestamp(current_period_end_ts)
+        # 方法 2: 如果 lines 中没有，尝试从 Stripe API 获取订阅详情
+        if not current_period_start_ts or not current_period_end_ts:
+            logger.info(f"📞 Fetching subscription details from Stripe API...")
+            from payments.stripe_subscription import StripeSubscriptionService
+            subscription = StripeSubscriptionService.get_subscription(subscription_id)
 
-                sub_config.update_subscription_status(
-                    stripe_subscription_id=subscription_id,
-                    status="active",
-                    current_period_start=current_period_start,
-                    current_period_end=current_period_end
+            if subscription:
+                # Use dict-style access for compatibility
+                current_period_start_ts = subscription.get("current_period_start")
+                current_period_end_ts = subscription.get("current_period_end")
+                logger.info(f"📅 Period from Stripe API: {current_period_start_ts} → {current_period_end_ts}")
+
+        if current_period_start_ts and current_period_end_ts:
+            current_period_start = datetime.fromtimestamp(current_period_start_ts)
+            current_period_end = datetime.fromtimestamp(current_period_end_ts)
+
+            sub_config.update_subscription_status(
+                stripe_subscription_id=subscription_id,
+                status="active",
+                current_period_start=current_period_start,
+                current_period_end=current_period_end
+            )
+
+            logger.info(f"✅ Subscription {subscription_id} renewed until {current_period_end}")
+
+            # For subscription renewal (not initial creation), extend user expiration
+            if billing_reason == "subscription_cycle":
+                logger.info(f"🔄 This is a renewal event, extending user expiration...")
+                background_tasks.add_task(
+                    extend_subscription_product,
+                    subscription_id=subscription_id,
+                    customer_email=customer_email
                 )
-
-                logger.info(f"✅ Subscription {subscription_id} renewed until {current_period_end}")
-
-                # For subscription renewal (not initial creation), extend user expiration
-                if billing_reason == "subscription_cycle":
-                    logger.info(f"🔄 This is a renewal event, extending user expiration...")
-                    background_tasks.add_task(
-                        extend_subscription_product,
-                        subscription_id=subscription_id,
-                        customer_email=customer_email
-                    )
-                    logger.info(f"🚀 Background task started for subscription renewal")
-            else:
-                logger.warning(f"Missing period timestamps in subscription {subscription_id}")
+                logger.info(f"🚀 Background task started for subscription renewal")
+        else:
+            logger.warning(f"Missing period timestamps in subscription {subscription_id}")
 
         return {"status": "success", "message": "Renewal processed"}
 
@@ -591,8 +672,16 @@ async def extend_subscription_product(
         plan_id = subscription.get('plan_id')
         logger.info(f"Subscription plan: {plan_id}")
 
+        # Get unique_name for renewal (fallback to customer_email if not available)
+        unique_name = subscription.get('unique_name')
+        if unique_name:
+            logger.info(f"Using unique_name for renewal: {unique_name}")
+        else:
+            logger.warning(f"No unique_name found for subscription {subscription_id}, falling back to customer_email")
+            unique_name = customer_email
+
         # Step 2: Load plan configuration to get duration_days
-        data_path = Path(__file__).resolve().parent.parent / f'data/products/{plan_id}.json'
+        data_path = Path(__file__).resolve().parent.parent / f'data/products/subscription/{plan_id}.json'
 
         if not data_path.exists():
             logger.error(f"Product config not found: {data_path}")
@@ -614,20 +703,20 @@ async def extend_subscription_product(
         # Step 4: Connect to remote server
         proxy = NodeProxy(hostname, 22, gateway_user, key_file)
 
-        # Step 5: Call update_user to extend expiration
+        # Step 5: Call update_user to extend expiration using unique_name
         result = update_user(
             proxy,
-            name_arg=customer_email,
+            name_arg=unique_name,
             days=duration_days,
             max_retries=3
         )
 
         if not result:
-            logger.error(f"❌ Failed to extend subscription for {customer_email}")
+            logger.error(f"❌ Failed to extend subscription for {unique_name}")
             # Optional: Update subscription status or send notification
             return
 
-        logger.info(f"✅ Extended subscription for {customer_email}")
+        logger.info(f"✅ Extended subscription for {unique_name}")
         logger.info(f"  Old expiration: {result.get('old_expires_date', 'N/A')}")
         logger.info(f"  New expiration: {result.get('new_expires_date', 'N/A')}")
         logger.info(f"  Days extended: {result.get('days_extended', duration_days)}")
@@ -643,15 +732,15 @@ async def generate_subscription_product_background(
     subscription_id: str,
     customer_email: str,
     plan_id: str,
-    order_id: str = None
+    order_id: str | None = None
 ):
     """Background task: Generate product for new subscription"""
     from center_management.db.subscription import get_subscription_config
     from center_management.db.product import ProductConfig
     from center_management.db.order import OrderConfig
-    from center_management.backend_api_v3 import test_add_user_v3
+    from center_management.backend_api_v3 import add_user_subscription
     from center_management.node_manage import NodeProxy
-    from routes.plans.base_plan import PlanConfig
+    from routes.plans.base_plan import PlanConfig, SubscriptionPlanConfig
     import json
     from pathlib import Path
 
@@ -678,7 +767,13 @@ async def generate_subscription_product_background(
 
         with open(data_path, 'r') as f:
             _data = json.load(f)
-            config = PlanConfig(**_data)
+            # 根据配置文件内容选择合适的配置类
+            # 如果包含 stripe_price_id_env 字段，说明是订阅套餐
+            if 'stripe_price_id_env' in _data:
+                config = SubscriptionPlanConfig(**_data)
+                logger.debug(f"config.gateway_ip_env是:{config.gateway_ip_env}")
+            else:
+                config = PlanConfig(**_data)
 
         # Get gateway configuration
         hostname = config.get_gateway_ip()
@@ -689,7 +784,7 @@ async def generate_subscription_product_background(
         logger.info(f"Connecting to server: {hostname}, user: {gateway_user}")
         proxy = NodeProxy(hostname, 22, gateway_user, key_file)
 
-        subscription_url = test_add_user_v3(
+        subscription_url, unique_name = add_user_subscription(
             proxy,
             name_arg=customer_email,
             url=config.domain_url,
@@ -704,6 +799,7 @@ async def generate_subscription_product_background(
             raise Exception("Failed to generate subscription URL")
 
         logger.info(f"✅ Subscription URL generated: {subscription_url}")
+        logger.info(f"✅ Unique name: {unique_name}")
 
         # Insert product data
         new_product_id = product_config.insert_product(
@@ -716,10 +812,11 @@ async def generate_subscription_product_background(
 
         logger.info(f"✅ Product inserted: {new_product_id}")
 
-        # Update subscription with product_id
-        sub_config.update_subscription_product(
+        # Update subscription with product_id and unique_name
+        sub_config.update_subscription_product_with_unique_name(
             stripe_subscription_id=subscription_id,
-            product_id=new_product_id
+            product_id=new_product_id,
+            unique_name=unique_name
         )
 
         # 更新订单产品状态为"已完成"

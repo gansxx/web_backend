@@ -149,9 +149,34 @@ def create_subscription_plan_router(config: SubscriptionPlanConfig) -> APIRouter
                 status = existing_sub.get("status", "")
                 if status in ["trialing", "active"]:
                     logger.info(f"用户 {email} 已有活跃订阅: {status}")
-                    raise HTTPException(
-                        400,
-                        detail=f"您已有活跃订阅（状态: {status}）"
+
+                    # 返回结构化错误响应而不是抛出异常
+                    status_text = {
+                        "trialing": "试用中",
+                        "active": "已激活"
+                    }.get(status, status)
+
+                    # 构建详细的错误信息
+                    error_msg = f"您已有活跃订阅（状态: {status_text}）"
+                    if existing_sub.get("current_period_end"):
+                        from datetime import datetime
+                        end_date = existing_sub.get("current_period_end")
+                        if isinstance(end_date, str):
+                            try:
+                                end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+                                error_msg += f"，有效期至 {end_dt.strftime('%Y-%m-%d')}"
+                            except:
+                                pass
+                        elif isinstance(end_date, datetime):
+                            error_msg += f"，有效期至 {end_date.strftime('%Y-%m-%d')}"
+
+                    response.status_code = 400
+                    return SubscriptionPurchaseResponse(
+                        success=False,
+                        message=error_msg,
+                        order_id=None,
+                        checkout_url=None,
+                        plan_name=config.plan_name
                     )
 
             # 2. 验证 Stripe Price ID 已配置
@@ -159,7 +184,12 @@ def create_subscription_plan_router(config: SubscriptionPlanConfig) -> APIRouter
                 stripe_price_id = config.get_stripe_price_id()
             except ValueError as e:
                 logger.error(f"Stripe Price ID 配置错误: {e}")
-                raise HTTPException(500, detail="订阅套餐配置错误")
+                response.status_code = 500
+                return SubscriptionPurchaseResponse(
+                    success=False,
+                    message="订阅套餐配置错误，请联系管理员",
+                    plan_name=config.plan_name
+                )
 
             # 3. 生成交易号并插入订单
             trade_num = generate_trade_number()
@@ -180,7 +210,12 @@ def create_subscription_plan_router(config: SubscriptionPlanConfig) -> APIRouter
                 logger.info(f"✅ 订单插入成功，订单ID: {order_id}, 类型: subscription")
             except Exception as e:
                 logger.error(f"插入订单失败: {e}")
-                raise HTTPException(500, detail="创建订单失败")
+                response.status_code = 500
+                return SubscriptionPurchaseResponse(
+                    success=False,
+                    message="创建订单失败，请稍后重试",
+                    plan_name=config.plan_name
+                )
 
             # 4. 创建 Stripe Subscription Checkout Session
             from payments.stripe_subscription import StripeSubscriptionService
@@ -206,7 +241,12 @@ def create_subscription_plan_router(config: SubscriptionPlanConfig) -> APIRouter
             if not result.get("success"):
                 error_msg = result.get("error", "创建 Checkout 会话失败")
                 logger.error(f"创建订阅 Checkout 失败: {error_msg}")
-                raise HTTPException(500, detail=f"创建订阅失败: {error_msg}")
+                response.status_code = 500
+                return SubscriptionPurchaseResponse(
+                    success=False,
+                    message=f"创建订阅失败: {error_msg}",
+                    plan_name=config.plan_name
+                )
 
             checkout_session_id = result.get("checkout_session_id")
             logger.info(f"✅ 订阅 Checkout Session 创建成功: {checkout_session_id}")
@@ -235,10 +275,16 @@ def create_subscription_plan_router(config: SubscriptionPlanConfig) -> APIRouter
             )
 
         except HTTPException:
+            # 保留未改造的 HTTPException（如未登录等）
             raise
         except Exception as e:
-            logger.error(f"购买订阅失败: {e}")
-            raise HTTPException(500, detail="购买订阅失败")
+            logger.error(f"购买订阅失败: {e}", exc_info=True)
+            response.status_code = 500
+            return SubscriptionPurchaseResponse(
+                success=False,
+                message="购买订阅失败，请稍后重试",
+                plan_name=config.plan_name
+            )
 
     @router.get(f"/subscription/{config.plan_id}/status")
     async def get_subscription_status(

@@ -86,7 +86,9 @@ class SubscriptionConfig(BaseConfig):
         current_period_end: Optional[datetime] = None,
         cancel_at_period_end: Optional[bool] = None,
         canceled_at: Optional[datetime] = None,
-        ended_at: Optional[datetime] = None
+        ended_at: Optional[datetime] = None,
+        cancel_at: Optional[datetime] = None,
+        cancellation_details: Optional[Dict[str, Any]] = None
     ) -> bool:
         """
         Update subscription status and period
@@ -99,6 +101,8 @@ class SubscriptionConfig(BaseConfig):
             cancel_at_period_end: Whether to cancel at period end (optional)
             canceled_at: When subscription was canceled (optional)
             ended_at: When subscription ended (optional)
+            cancel_at: When subscription is scheduled to cancel (optional)
+            cancellation_details: User feedback on cancellation (optional)
 
         Returns:
             True if successful, False otherwise
@@ -111,12 +115,18 @@ class SubscriptionConfig(BaseConfig):
                 "p_current_period_end": current_period_end.isoformat() if current_period_end else None,
                 "p_cancel_at_period_end": cancel_at_period_end,
                 "p_canceled_at": canceled_at.isoformat() if canceled_at else None,
-                "p_ended_at": ended_at.isoformat() if ended_at else None
+                "p_ended_at": ended_at.isoformat() if ended_at else None,
+                "p_cancel_at": cancel_at.isoformat() if cancel_at else None,
+                "p_cancellation_details": cancellation_details
             }
             response = self.supabase.rpc("update_subscription_status", params).execute()
 
             if response.data:
                 logger.info(f"Updated subscription status: {stripe_subscription_id} -> {status}")
+                if cancel_at:
+                    logger.info(f"Subscription scheduled to cancel at: {cancel_at}")
+                if cancellation_details:
+                    logger.info(f"Cancellation details: {cancellation_details}")
                 return True
 
             return False
@@ -242,6 +252,41 @@ class SubscriptionConfig(BaseConfig):
 
         except APIError as e:
             logger.error(f"Failed to update subscription product: {e}")
+            raise e
+
+    def update_subscription_product_with_unique_name(
+        self,
+        stripe_subscription_id: str,
+        product_id: str,
+        unique_name: Optional[str] = None
+    ) -> bool:
+        """
+        Update subscription with product_id and unique_name
+
+        Args:
+            stripe_subscription_id: Stripe Subscription ID
+            product_id: Generated product UUID
+            unique_name: Server-side unique identifier (email_timestamp format)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            params = {
+                "p_stripe_subscription_id": stripe_subscription_id,
+                "p_product_id": product_id,
+                "p_unique_name": unique_name
+            }
+            response = self.supabase.rpc("update_subscription_product_with_unique_name", params).execute()
+
+            if response.data:
+                logger.info(f"Updated subscription product with unique_name: {stripe_subscription_id} -> {product_id}, unique_name={unique_name}")
+                return True
+
+            return False
+
+        except APIError as e:
+            logger.error(f"Failed to update subscription product with unique_name: {e}")
             raise e
 
     def get_user_subscriptions(

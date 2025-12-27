@@ -381,6 +381,12 @@ def run_add_user_v3(proxy, name_arg=None, alias=None,up_mbps=None,down_mbps=None
         if user_match:
             result['name'] = user_match.group(1)
 
+        # 尝试提取唯一标识符 (unique_name)
+        # 格式: "✓ Unique identifier: user@example.com_1737456789"
+        unique_match = re.search(r"Unique identifier:\s+(\S+)", out)
+        if unique_match:
+            result['unique_name'] = unique_match.group(1)
+
     return exit_status, hy2_link, result if result else out, err
 
 
