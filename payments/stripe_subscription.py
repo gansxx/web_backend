@@ -2,13 +2,25 @@
 Stripe Subscription Integration Module
 
 Handles:
-- Creating subscription checkout sessions with trial period
+- Creating subscription checkout sessions with trial period (dynamic product creation)
 - Managing subscription lifecycle (cancel, update)
 - Customer portal session creation
 
 Configuration:
-- STRIPE_MONTHLY_PRICE_ID: Stripe Price ID for monthly subscription
 - SUBSCRIPTION_TRIAL_DAYS: Trial period in days (default: 30)
+
+Usage:
+    # Create subscription checkout with dynamic pricing
+    result = StripeSubscriptionService.create_subscription_checkout_session(
+        customer_email="user@example.com",
+        amount_cents=999,           # $9.99
+        currency="usd",
+        product_name="Premium Monthly",
+        interval="month",           # month | year | week | day
+        trial_days=30,
+        success_url="https://example.com/success",
+        cancel_url="https://example.com/cancel",
+    )
 """
 
 from __future__ import annotations
@@ -24,7 +36,6 @@ from loguru import logger
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
 
 # Subscription Configuration
-STRIPE_MONTHLY_PRICE_ID = os.getenv("STRIPE_MONTHLY_PRICE_ID", "")
 SUBSCRIPTION_TRIAL_DAYS = int(os.getenv("SUBSCRIPTION_TRIAL_DAYS", "30"))
 
 # Initialize Stripe at module level if key available
@@ -35,13 +46,16 @@ if STRIPE_SECRET_KEY:
 
 @dataclass
 class SubscriptionCheckoutRequest:
-    """Subscription checkout request data"""
+    """Subscription checkout request data (dynamic product creation)"""
     customer_email: str
-    price_id: str
     success_url: str
     cancel_url: str
+    amount_cents: int              # Price in cents (e.g., 999 = $9.99)
+    currency: str                  # ISO currency code (e.g., 'usd', 'cny')
+    product_name: str              # Product name (e.g., 'Premium Monthly')
+    interval: str = "month"        # Billing interval: 'day' | 'week' | 'month' | 'year'
     trial_days: int = 30
-    plan_id: str = "monthly_subscription"
+    plan_id: str = "subscription"
     metadata: Optional[Dict[str, str]] = None
 
 
@@ -62,23 +76,30 @@ class StripeSubscriptionService:
     @staticmethod
     def create_subscription_checkout_session(
         customer_email: str,
-        price_id: str,
         success_url: str,
         cancel_url: str,
+        amount_cents: int,
+        currency: str,
+        product_name: str,
+        interval: str = "month",
         trial_days: int = 30,
-        plan_id: str = "monthly_subscription",
+        plan_id: str = "subscription",
         metadata: Optional[Dict[str, str]] = None
     ) -> Dict[str, Any]:
         """
-        Create a Checkout Session for subscription with trial period
+        Create a Checkout Session for subscription with trial period (dynamic product creation)
 
-        Stripe will require card binding but won't charge until trial ends
+        Stripe will require card binding but won't charge until trial ends.
+        Product and Price are created dynamically - no need to pre-create in Dashboard.
 
         Args:
             customer_email: Customer email address
-            price_id: Stripe Price ID (from Dashboard)
             success_url: URL to redirect after successful checkout
             cancel_url: URL to redirect if checkout is canceled
+            amount_cents: Subscription price in cents (e.g., 999 = $9.99)
+            currency: ISO currency code (e.g., 'usd', 'cny')
+            product_name: Product name displayed to customer
+            interval: Billing interval - 'day' | 'week' | 'month' | 'year'
             trial_days: Trial period in days (default: 30)
             plan_id: Internal plan identifier
             metadata: Additional metadata to attach
@@ -93,12 +114,24 @@ class StripeSubscriptionService:
             session_metadata["plan_id"] = plan_id
             session_metadata["customer_email"] = customer_email
 
+            # Use price_data for dynamic product/price creation
+            line_items = [{
+                'price_data': {
+                    'currency': currency.lower(),
+                    'product_data': {
+                        'name': product_name,
+                    },
+                    'unit_amount': amount_cents,
+                    'recurring': {
+                        'interval': interval,
+                    },
+                },
+                'quantity': 1,
+            }]
+
             session = stripe.checkout.Session.create(
                 mode='subscription',
-                line_items=[{
-                    'price': price_id,
-                    'quantity': 1,
-                }],
+                line_items=line_items,
                 customer_email=customer_email,
                 success_url=success_url,
                 cancel_url=cancel_url,
@@ -110,7 +143,11 @@ class StripeSubscriptionService:
                 metadata=session_metadata,
             )
 
-            logger.info(f"Created subscription checkout session: {session.id} with {trial_days} days trial")
+            logger.info(
+                f"Created subscription checkout session: {session.id} "
+                f"for {product_name} at {amount_cents} {currency.upper()}/{'mo' if interval == 'month' else interval} "
+                f"with {trial_days} days trial"
+            )
 
             return {
                 "success": True,
@@ -358,19 +395,9 @@ class StripeSubscriptionService:
             }
 
 
-# Helper function for getting monthly price ID
-def get_monthly_price_id() -> str:
-    """Get the configured monthly subscription price ID"""
-    price_id = os.getenv("STRIPE_MONTHLY_PRICE_ID", "")
-    if not price_id:
-        logger.warning("STRIPE_MONTHLY_PRICE_ID not configured")
-    return price_id
-
-
 # Export main interfaces
 __all__ = [
     "StripeSubscriptionService",
     "SubscriptionCheckoutRequest",
-    "get_monthly_price_id",
     "SUBSCRIPTION_TRIAL_DAYS",
 ]

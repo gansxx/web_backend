@@ -179,19 +179,7 @@ def create_subscription_plan_router(config: SubscriptionPlanConfig) -> APIRouter
                         plan_name=config.plan_name
                     )
 
-            # 2. 验证 Stripe Price ID 已配置
-            try:
-                stripe_price_id = config.get_stripe_price_id()
-            except ValueError as e:
-                logger.error(f"Stripe Price ID 配置错误: {e}")
-                response.status_code = 500
-                return SubscriptionPurchaseResponse(
-                    success=False,
-                    message="订阅套餐配置错误，请联系管理员",
-                    plan_name=config.plan_name
-                )
-
-            # 3. 生成交易号并插入订单
+            # 2. 生成交易号并插入订单
             trade_num = generate_trade_number()
 
             from center_management.db.order import OrderConfig
@@ -217,7 +205,7 @@ def create_subscription_plan_router(config: SubscriptionPlanConfig) -> APIRouter
                     plan_name=config.plan_name
                 )
 
-            # 4. 创建 Stripe Subscription Checkout Session
+            # 3. 创建 Stripe Subscription Checkout Session (动态创建产品)
             from payments.stripe_subscription import StripeSubscriptionService
 
             success_url = f"{FRONTEND_URL}/dashboard?subscription=success&session_id={{CHECKOUT_SESSION_ID}}"
@@ -225,9 +213,12 @@ def create_subscription_plan_router(config: SubscriptionPlanConfig) -> APIRouter
 
             result = StripeSubscriptionService.create_subscription_checkout_session(
                 customer_email=email,
-                price_id=stripe_price_id,
                 success_url=success_url,
                 cancel_url=cancel_url,
+                amount_cents=PLAN_PRICE,
+                currency=PLAN_CURRENCY,
+                product_name=config.plan_name,
+                interval=config.billing_period,
                 trial_days=config.trial_days,
                 plan_id=config.plan_id,
                 metadata={
@@ -251,7 +242,7 @@ def create_subscription_plan_router(config: SubscriptionPlanConfig) -> APIRouter
             checkout_session_id = result.get("checkout_session_id")
             logger.info(f"✅ 订阅 Checkout Session 创建成功: {checkout_session_id}")
 
-            # 5. 更新订单的 checkout_session_id
+            # 4. 更新订单的 checkout_session_id
             if checkout_session_id:
                 try:
                     order_config.update_checkout_session_id(
