@@ -27,3 +27,6 @@ deployment/terraform.tfstate.backup
 deployment/terraform.tfstate
 /deployment
 todo.md
+.env.self_example
+.env.local.dockeer
+.env.migration.example
